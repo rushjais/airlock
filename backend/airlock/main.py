@@ -263,14 +263,16 @@ def _start_workers():
 
 
 @app.post("/api/demo/replay/{scenario:path}")
-def demo_replay(scenario: str, request: Request, background: BackgroundTasks):
-    """Local-only: push a fixture scenario through the live pipeline (demo backup if live email misbehaves)."""
+def demo_replay(scenario: str, request: Request, background: BackgroundTasks, process: bool = True):
+    """Local-only: push a fixture scenario through the live pipeline (demo backup if live email misbehaves).
+    process=false just lands it in the inbox, so an outside agent (e.g. Claude Desktop over MCP) handles it."""
     if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
         raise HTTPException(403, "replay is only available locally")
     from . import replay
     message_id, _ = replay.replay(scenario, unique=True)
-    background.add_task(_process, message_id)
-    return {"ok": True, "message_id": message_id}
+    if process:
+        background.add_task(_process, message_id)
+    return {"ok": True, "message_id": message_id, "processed": process}
 
 
 @app.get("/api/results")

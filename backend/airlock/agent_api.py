@@ -108,7 +108,28 @@ def execute(ref: AuthRef):
 
 @router.post("/verify", dependencies=[Depends(_auth)])
 def verify(ref: ChangeRef):
+    """Ask the vendor via the phone on file. A listener resolves the hold when they answer; poll get_decision."""
+    import threading
+
     from . import verify as V
     sent = V.send_code(ref.change_request_id)
+    if sent.get("ok"):
+        threading.Thread(target=_await_vendor, args=(ref.change_request_id,), daemon=True).start()
     return {"decision": "hold", "reason": "awaiting_vendor_confirmation" if sent.get("ok") else sent.get("reason"),
-            "flags": [], "next_action": "wait_for_vendor_reply", "facts": sent}
+            "flags": [], "next_action": "poll get_decision until the vendor answers", "facts": sent}
+
+
+def _await_vendor(change_request_id: str) -> None:
+    from . import verify as V
+    reply = V.wait_for_reply(change_request_id)
+    if reply and reply["answer"] == "no":  # not us -> the held invoice pays the account on file
+        policy.resolve_change_rejected(change_request_id, {"vendor_reply": reply["reply"], "reply": reply["reply"]})
+    elif reply and reply["answer"] == "yes":  # evidence only; an admin must approve on the signed page
+        db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
+        cr = db.one("select source_message_id from change_requests where id=%s", change_request_id)
+        case = db.one("select id from cases where source_message_id=%s", cr["source_message_id"])
+        if case:
+            pipeline._notify_admin(case["id"], change_request_id)
+        else:
+            from . import approvals
+            pipeline.log.info("approval link: %s", approvals.approval_link(change_request_id))
