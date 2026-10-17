@@ -7,6 +7,7 @@ One authorization -> at most one transfer: atomic status claim + Stripe idempote
 A timeout leaves the authorization `unknown`, which blocks new authorizations until reconciled with the SAME key
 (invariant 6).
 """
+import os
 import pathlib
 
 import stripe
@@ -23,6 +24,20 @@ stripe.api_key = _KEY
 stripe.max_network_retries = 0  # retries are ours, always with the same idempotency key
 
 app = FastAPI(title="Airlock executor")
+# Test-only: pause after Stripe accepts a transfer, before we record it, so the chaos test can kill us there.
+_CHAOS_PAUSE_S = float(os.environ.get("AIRLOCK_CHAOS_PAUSE_AFTER_STRIPE_S", "0"))
+
+
+@app.on_event("startup")
+def _recover_interrupted() -> None:
+    """Anything still `executing` belongs to a process that died mid-transfer. We can't know whether Stripe
+    moved the money, so it becomes `unknown` (blocks new authorizations, invariant 6) until reconciled with the
+    SAME idempotency key."""
+    rows = db.all_rows("""update payment_authorizations set status='unknown',
+                          last_error='executor restarted while this payment was executing'
+                          where status='executing' returning id""")
+    for r in rows:
+        print(f"recovered interrupted authorization {r['id']} -> unknown")
 
 
 class ExecuteRequest(BaseModel):
@@ -80,6 +95,9 @@ def _transfer(a: dict) -> dict:
             metadata={"authorization_id": str(a["id"]), "obligation_id": a["obligation_id"], "airlock": "demo"},
             idempotency_key=a["idempotency_key"],
         )
+        if _CHAOS_PAUSE_S:
+            import time
+            time.sleep(_CHAOS_PAUSE_S)
     except (stripe.APIConnectionError, stripe.RateLimitError) as e:
         # Outcome unknown: the transfer may or may not exist. Block, never re-key.
         db.one("update payment_authorizations set status='unknown', last_error=%s where id=%s returning id",
