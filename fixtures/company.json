@@ -1,0 +1,92 @@
+{
+  "_note": "Fictional demo company. All names, domains, phones and accounts are invented. Replace phone numbers and Stripe test account IDs with real test values before the demo.",
+  "company": {
+    "name": "Kiln Supply Co.",
+    "ap_agent_inbox": "ap-agent@REPLACE_WITH_PRIMITIVE_DOMAIN",
+    "auto_pay_limit_cents": 200000,
+    "admins": [
+      { "id": "admin_rushil", "name": "Rushil (AP admin)", "notify_phone": "+1-555-0100", "notify_email": "REPLACE_ME" }
+    ],
+    "requesters": [
+      { "id": "emp_ops_lead", "name": "Ops lead", "email": "ops@kilnsupply.example" }
+    ]
+  },
+  "vendors": [
+    {
+      "id": "ven_acme",
+      "name": "Acme Metals",
+      "registered_domain": "acmemetals.com",
+      "registered_email": "billing@acmemetals.com",
+      "registered_phone": "+1-555-0182",
+      "stripe_account_id": "acct_ACME_TEST_REPLACE",
+      "destination_last4": "4821",
+      "registry_version": 1,
+      "public_key": null
+    },
+    {
+      "id": "ven_brightline",
+      "name": "Brightline Freight",
+      "registered_domain": "brightlinefreight.com",
+      "registered_email": "ap@brightlinefreight.com",
+      "registered_phone": "+1-555-0147",
+      "stripe_account_id": "acct_BRIGHTLINE_TEST_REPLACE",
+      "destination_last4": "2093",
+      "registry_version": 1,
+      "public_key": null
+    },
+    {
+      "id": "ven_corvid",
+      "name": "Corvid Software",
+      "registered_domain": "corvidsoftware.io",
+      "registered_email": "billing@corvidsoftware.io",
+      "registered_phone": "+1-555-0133",
+      "stripe_account_id": "acct_CORVID_TEST_REPLACE",
+      "destination_last4": "7710",
+      "registry_version": 1,
+      "public_key": null
+    }
+  ],
+  "contracts": [
+    {
+      "id": "ctr_acme_2026",
+      "vendor_id": "ven_acme",
+      "description": "Steel bar and sheet stock, monthly replenishment",
+      "pricing": "variable_by_order",
+      "payment_terms_days": 30,
+      "monthly_cap_cents": 500000,
+      "allowed_line_items": ["steel bar stock", "steel sheet", "delivery fee", "emergency delivery fee"],
+      "late_fees_allowed": false
+    },
+    {
+      "id": "ctr_brightline_2026",
+      "vendor_id": "ven_brightline",
+      "description": "Regional freight, per shipment",
+      "pricing": "variable_by_order",
+      "payment_terms_days": 15,
+      "monthly_cap_cents": 300000,
+      "allowed_line_items": ["freight", "fuel surcharge", "liftgate"],
+      "late_fees_allowed": false
+    },
+    {
+      "id": "ctr_corvid_2026",
+      "vendor_id": "ven_corvid",
+      "description": "Inventory software subscription, 12-month term",
+      "pricing": "fixed",
+      "fixed_amount_cents": 29900,
+      "payment_terms_days": 30,
+      "monthly_cap_cents": 29900,
+      "allowed_line_items": ["subscription"],
+      "late_fees_allowed": false
+    }
+  ],
+  "standing_limits": [
+    { "vendor_id": "ven_acme", "line_item": "emergency delivery fee", "monthly_cap_cents": 25000, "used_cents": 0 }
+  ],
+  "obligations": [
+    { "id": "ob_118", "vendor_id": "ven_acme", "po_number": "PO-118", "amount_cents": 145000, "status": "accepted", "note": "Steel bar stock, received Oct 9" },
+    { "id": "ob_121", "vendor_id": "ven_acme", "po_number": "PO-121", "amount_cents": 188000, "status": "accepted", "note": "Steel sheet, received Oct 12" },
+    { "id": "ob_122", "vendor_id": "ven_acme", "po_number": "PO-122", "amount_cents": 150000, "status": "approved", "note": "Ordered, NOT yet received" },
+    { "id": "ob_205", "vendor_id": "ven_brightline", "po_number": "PO-205", "amount_cents": 82000, "status": "accepted", "note": "Shipment delivered Oct 13" },
+    { "id": "ob_310", "vendor_id": "ven_corvid", "po_number": "PO-310", "amount_cents": 29900, "status": "accepted", "note": "October subscription" }
+  ]
+}

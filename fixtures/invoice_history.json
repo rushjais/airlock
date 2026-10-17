@@ -1,0 +1,22 @@
+{
+  "_note": "Past paid invoices per vendor. Baseline for anomaly flags (amount deviation, remit-to change, cadence). Fictional.",
+  "history": [
+    { "vendor_id": "ven_acme", "invoice": "INV-1031", "date": "2026-05-08", "amount_cents": 142000, "remit_last4": "4821", "line_items": ["steel bar stock"] },
+    { "vendor_id": "ven_acme", "invoice": "INV-1033", "date": "2026-06-06", "amount_cents": 148500, "remit_last4": "4821", "line_items": ["steel bar stock", "delivery fee"] },
+    { "vendor_id": "ven_acme", "invoice": "INV-1035", "date": "2026-07-09", "amount_cents": 139000, "remit_last4": "4821", "line_items": ["steel bar stock"] },
+    { "vendor_id": "ven_acme", "invoice": "INV-1037", "date": "2026-08-07", "amount_cents": 151000, "remit_last4": "4821", "line_items": ["steel sheet"] },
+    { "vendor_id": "ven_acme", "invoice": "INV-1039", "date": "2026-09-08", "amount_cents": 186000, "remit_last4": "4821", "line_items": ["steel sheet", "delivery fee"] },
+    { "vendor_id": "ven_acme", "invoice": "INV-1041", "date": "2026-09-29", "amount_cents": 144500, "remit_last4": "4821", "line_items": ["steel bar stock"] },
+
+    { "vendor_id": "ven_brightline", "invoice": "BF-82", "date": "2026-07-02", "amount_cents": 79500, "remit_last4": "2093", "line_items": ["freight", "fuel surcharge"] },
+    { "vendor_id": "ven_brightline", "invoice": "BF-84", "date": "2026-08-01", "amount_cents": 84000, "remit_last4": "2093", "line_items": ["freight"] },
+    { "vendor_id": "ven_brightline", "invoice": "BF-86", "date": "2026-09-03", "amount_cents": 81000, "remit_last4": "2093", "line_items": ["freight", "liftgate"] },
+
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0924", "date": "2026-04-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] },
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0925", "date": "2026-05-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] },
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0926", "date": "2026-06-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] },
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0927", "date": "2026-07-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] },
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0928", "date": "2026-08-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] },
+    { "vendor_id": "ven_corvid", "invoice": "INV-C-0929", "date": "2026-09-01", "amount_cents": 29900, "remit_last4": "7710", "line_items": ["subscription"] }
+  ]
+}
