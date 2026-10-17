@@ -2,9 +2,9 @@
 -- Derived from ../../schema.sql (design reference) with the kickoff additions:
 -- per-vendor inbox aliases, quarantined raw message storage, `scheduled` authorizations (undo window).
 
-drop schema if exists airlock cascade;
-create schema airlock;
-set search_path to airlock;
+drop schema if exists {schema} cascade;
+create schema {schema};
+set search_path to {schema};
 
 create table company (
   id text primary key default 'kiln',

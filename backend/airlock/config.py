@@ -29,6 +29,7 @@ def need(name: str) -> str:
 
 
 DATABASE_URL = get("DATABASE_URL")
+DB_SCHEMA = get("AIRLOCK_DB_SCHEMA", "airlock")  # tests use airlock_test so they never touch the live demo
 INBOX_DOMAIN = (get("AGENT_INBOX_ADDRESS", "ap@wise-egret.primitive.email") or "").split("@")[-1]
 AGENT_INBOX = get("AGENT_INBOX_ADDRESS", f"ap@{INBOX_DOMAIN}")
 EXECUTOR_URL = get("EXECUTOR_URL", "http://127.0.0.1:8001")

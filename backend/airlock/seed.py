@@ -25,8 +25,8 @@ def main(reset: bool, demo: bool = True) -> None:
 
     with psycopg.connect(config.need("DATABASE_URL"), autocommit=False) as conn:
         if reset:
-            conn.execute(schema)
-        conn.execute("set search_path to airlock")
+            conn.execute(schema.replace("{schema}", config.DB_SCHEMA))
+        conn.execute(f"set search_path to {config.DB_SCHEMA}")
         c = company["company"]
         conn.execute("insert into company (name, auto_pay_limit_cents) values (%s, %s)",
                      (c["name"], c["auto_pay_limit_cents"]))

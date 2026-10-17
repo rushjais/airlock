@@ -1,3 +1,7 @@
+import os
+
+os.environ["AIRLOCK_DB_SCHEMA"] = "airlock_test"  # set before airlock.config is imported
+
 """Tests run against the real Supabase database (reseeded per test). Stripe is stubbed unless a test says otherwise."""
 import threading
 import types

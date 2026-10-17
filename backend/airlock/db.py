@@ -18,7 +18,7 @@ def pool() -> ConnectionPool:
             config.need("DATABASE_URL"),
             min_size=1,
             max_size=10,
-            kwargs={"row_factory": dict_row, "options": "-c search_path=airlock,public"},
+            kwargs={"row_factory": dict_row, "prepare_threshold": None, "options": f"-c search_path={config.DB_SCHEMA},public"},
             open=True,
         )
         atexit.register(_pool.close)
