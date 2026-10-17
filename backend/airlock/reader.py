@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import config, db
 
-MODEL = "claude-opus-5-5"
+MODEL = config.get("AIRLOCK_READER_MODEL", "claude-opus-5-5")  # extraction only; security never depends on it
 Source = Literal["email", "attachment"]
 
 
