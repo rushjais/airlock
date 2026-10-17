@@ -1,18 +1,53 @@
 @import "tailwindcss";
 
+/* One token set. Dark is the default; <html class="light"> switches every token. */
+@custom-variant light (&:where(.light, .light *));
+
+:root {
+  --bg: #121417;
+  --panel: #1a1d22;
+  --raised: #22262d;
+  --line: #3a414c;
+  --text: #f4f6f9;
+  --muted: #a3acba;
+  --ok: #2fd07a;
+  --ok-soft: #12321f;
+  --bad: #ff5d5d;
+  --bad-soft: #3a1717;
+  --held: #ffb020;
+  --held-soft: #3a2a0c;
+  --code: #d3dae4;
+}
+.light {
+  --bg: #eef1f4;
+  --panel: #f8fafb;
+  --raised: #ffffff;
+  --line: #c9d2dd;
+  --text: #14213d;
+  --muted: #586274;
+  --ok: #18794e;
+  --ok-soft: #dcf2e6;
+  --bad: #c0261d;
+  --bad-soft: #fbe3e1;
+  --held: #a26a00;
+  --held-soft: #fbefd6;
+  --code: #2f3a4a;
+}
+
 @theme {
-  --color-steel: #eef1f4;
-  --color-panel: #f8fafb;
-  --color-ink: #14213d;
-  --color-muted: #5b6577;
-  --color-rule: #d5dbe3;
-  --color-trusted: #1f7a5c;
-  --color-trusted-soft: #e3f1ec;
-  --color-untrusted: #c98a0b;
-  --color-untrusted-soft: #fbf1db;
-  --color-denied: #b3261e;
-  --color-denied-soft: #f8e4e2;
-  --color-code: #3d4756;
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-held: var(--held);
+  --color-held-soft: var(--held-soft);
+  --color-code: var(--code);
 
   --font-ui: "Archivo", system-ui, sans-serif;
   --font-letter: "Newsreader", Georgia, serif;
@@ -22,26 +57,19 @@
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: var(--color-steel);
-  color: var(--color-ink);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-ui);
-  font-variation-settings: "wdth" 100;
   -webkit-font-smoothing: antialiased;
 }
 
-.num { font-variant-numeric: tabular-nums; }
+.num { font-family: var(--font-code); font-variant-numeric: tabular-nums; }
 .wide { font-variation-settings: "wdth" 118; }
-.condensed { font-variation-settings: "wdth" 78; }
+.condensed { font-variation-settings: "wdth" 80; }
 
-/* The one orchestrated motion: a post entering the chamber. */
-@keyframes enter {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
-}
-.post-enter { animation: enter 420ms cubic-bezier(.2,.7,.2,1) both; }
+/* "Just arrived" highlight is computed from timestamps on each poll (no CSS animation, which browsers
+   pause in background tabs; a demo screen can't depend on that). */
+.fresh { background: color-mix(in srgb, var(--held) 14%, transparent); border-radius: 6px; transition: background 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .fresh { transition: none; } }
 
-@media (prefers-reduced-motion: reduce) {
-  .post-enter { animation: none; }
-}
-
-:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }

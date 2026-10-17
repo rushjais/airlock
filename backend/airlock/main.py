@@ -89,8 +89,12 @@ def messages(limit: int = 50):
 def cases(limit: int = 50):
     return db.all_rows("""
         select c.id, c.subject, c.status, c.created_at, c.vendor_id, m.from_address,
-               (select count(*) from case_posts p where p.case_id=c.id) as posts
+               (select count(*) from case_posts p where p.case_id=c.id) as posts,
+               coalesce((d.facts->>'obligation_cents')::int, (d.facts->>'claimed_cents')::int) as amount_cents,
+               d.decision, d.reason
         from cases c join messages m on m.id=c.source_message_id
+        left join lateral (select facts, decision, reason from decisions where message_id=c.source_message_id
+                           order by created_at desc limit 1) d on true
         order by c.created_at desc limit %s""", limit)
 
 
@@ -114,6 +118,83 @@ def money():
         from payment_authorizations a join vendors v on v.id=a.vendor_id order by a.created_at desc limit 50""")
     paid = sum(r["amount_cents"] for r in rows if r["status"] == "succeeded")
     return {"paid_cents": paid, "attacker_cents": 0, "payments": rows}
+
+
+@app.get("/api/summary")
+def summary():
+    """Top-bar totals. 'Stolen' = money Airlock sent to any account not in the vendor registry (computed, not assumed)."""
+    paid = db.one("select coalesce(sum(amount_cents),0) c from payment_authorizations where status='succeeded'")["c"]
+    stolen = db.one("""select coalesce(sum(a.amount_cents),0) c from payment_authorizations a
+                       where a.status='succeeded' and a.stripe_account_id not in (select stripe_account_id from vendors)""")["c"]
+    held = db.one("""select coalesce(sum(coalesce((d.facts->>'obligation_cents')::int, (d.facts->>'claimed_cents')::int, 0)),0) c
+                     from cases c join lateral (select facts from decisions where message_id=c.source_message_id
+                                                order by created_at desc limit 1) d on true
+                     where c.status in ('held','needs_approval')""")["c"]
+    company = db.one("select name from company")
+    return {"company": company["name"] if company else "", "paid_cents": paid, "held_cents": held, "stolen_cents": stolen}
+
+
+@app.get("/api/cases/{case_id}/card")
+def decision_card(case_id: str):
+    """What the email claims (red) next to what the company's records say (green), and the rule that fired."""
+    from . import flags as F
+    c = db.one("select * from cases where id=%s", case_id)
+    if not c:
+        raise HTTPException(404)
+    mid = c["source_message_id"]
+    d = db.one("select * from decisions where message_id=%s order by created_at desc limit 1", mid)
+    m = db.one("select * from messages where id=%s", mid)
+    raw = db.one("select body_text, attachments from message_raw where message_id=%s", mid)
+    facts = d["facts"] if d else {}
+    vendor = db.one("select * from vendors where id=%s", facts.get("vendor_id")) if facts.get("vendor_id") else None
+    imitated = db.one("select * from vendors where id=%s", facts.get("imitates")) if facts.get("imitates") else None
+    reg = vendor or imitated
+    rows = []
+    rows.append({"label": "Sender", "claim": m["from_address"],
+                 "record": reg["registered_email"] if reg else "no vendor with this domain",
+                 "match": vendor is not None})
+    text = (m["subject"] or "") + "\n" + (raw["body_text"] or "") + "\n" + "\n".join(
+        a.get("text") or "" for a in raw["attachments"] or [])
+    accounts = sorted(F.account_last4s(text))
+    if reg:
+        rows.append({"label": "Pay to", "claim": ", ".join(f"acct ••{a}" for a in accounts) if accounts else "account on file",
+                     "record": f"acct ••{reg['destination_last4']}",
+                     "match": all(a == reg["destination_last4"] for a in accounts)})
+    if facts.get("claimed_cents") is not None or facts.get("obligation_cents") is not None:
+        rows.append({"label": "Amount", "claim": facts.get("claimed_cents"), "record": facts.get("obligation_cents"),
+                     "match": facts.get("claimed_cents") == facts.get("obligation_cents"), "money": True,
+                     "record_note": facts.get("po_number")})
+    if facts.get("obligation_status"):
+        rows.append({"label": "Purchase order", "claim": facts.get("po_number"),
+                     "record": f"{facts.get('po_number')} {facts['obligation_status']}",
+                     "match": facts["obligation_status"] == "accepted"})
+    return {"decision": d["decision"] if d else None, "reason": d["reason"] if d else None,
+            "flags": d["flags"] if d else [], "next_action": d["next_action"] if d else None,
+            "rows": rows, "authorization_id": facts.get("authorization_id"), "case_status": c["status"]}
+
+
+@app.get("/api/controls")
+def controls():
+    company = db.one("select * from company")
+    limits = db.all_rows("""select s.line_item, s.monthly_cap_cents, s.used_cents, v.name as vendor
+                            from standing_limits s join vendors v on v.id=s.vendor_id""")
+    queue = db.one("""select (select count(*) from change_requests where status in ('pending_verification','verified'))
+                           + (select count(*) from payment_authorizations where status='pending_approval')
+                           + (select count(*) from cases where status='needs_approval') as n""")["n"]
+    return {"auto_pay_limit_cents": company["auto_pay_limit_cents"] if company else 0,
+            "undo_window_seconds": company["undo_window_seconds"] if company else 0,
+            "standing_limits": limits, "approval_queue": queue}
+
+
+@app.post("/api/demo/reset")
+def demo_reset(request: Request):
+    """Restore fixtures for a clean demo. Only from this laptop: requests through the public tunnel carry
+    X-Forwarded-For and are refused."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "reset is only available locally")
+    from . import seed
+    seed.main(reset=True)
+    return {"ok": True}
 
 
 @app.get("/api/results")

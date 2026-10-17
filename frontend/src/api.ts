@@ -6,6 +6,9 @@ export type CaseRow = {
   vendor_id: string | null;
   from_address: string;
   posts: number;
+  amount_cents: number | null;
+  decision: string | null;
+  reason: string | null;
 };
 
 export type Post = {
@@ -44,11 +47,23 @@ export type ModeResult = {
 export type Results = { available: boolean; run_id?: string; baseline?: ModeResult;
   baseline_permissive?: ModeResult; airlock?: ModeResult };
 
+export type Summary = { company: string; paid_cents: number; held_cents: number; stolen_cents: number };
+export type CardRow = { label: string; claim: string | number | null; record: string | number | null; match: boolean;
+                        money?: boolean; record_note?: string };
+export type Card = { decision: string | null; reason: string | null; flags: string[]; next_action: string | null;
+                     rows: CardRow[]; authorization_id?: string; case_status: string };
+export type Controls = { auto_pay_limit_cents: number; undo_window_seconds: number; approval_queue: number;
+                         standing_limits: { line_item: string; monthly_cap_cents: number; used_cents: number; vendor: string }[] };
+
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
   case: (id: string) => get<CaseDetail>(`/api/cases/${id}`),
   money: () => get<Money>("/api/money"),
   results: () => get<Results>("/api/results"),
+  summary: () => get<Summary>("/api/summary"),
+  card: (id: string) => get<Card>(`/api/cases/${id}/card`),
+  controls: () => get<Controls>("/api/controls"),
+  reset: () => fetch("/api/demo/reset", { method: "POST" }).then((r) => r.ok),
 };
 
 export const usd = (cents: number) =>
