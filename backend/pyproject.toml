@@ -1,0 +1,21 @@
+[project]
+name = "airlock"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=1.15.0",
+    "fastapi>=0.143.3",
+    "httpx>=0.28.1",
+    "psycopg[binary,pool]>=3.3.6",
+    "pypdf>=6.21.1",
+    "python-dotenv>=1.2.4",
+    "stripe>=16.0.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

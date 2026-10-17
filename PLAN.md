@@ -3,6 +3,26 @@
 Read with CLAUDE.md (rules and invariants). This file is the *what* and *when* for the hackathon.
 Hacking 10:30am Sat Oct 17 → submissions + live demos 10:00am Sun Oct 18.
 
+## Kickoff decisions (Sat 11:40am), these override older sections below
+
+- **Tracks:** Primitive (main focus) + Inkbox. Stripe is the payment rail, not a declared track. Organizers said
+  to pick one or two tracks; final choice goes on the form Sunday morning.
+- **Demo is 60–90 seconds live, no slides.** Hook = the real story of a fake-invoice bank change at the founder's
+  dad's company (confirm the amount first).
+- **Agent team (Inkbox identities, talking to each other):** Intake (external: Primitive inbox, reads invoices,
+  replies to vendors, no money or internal data), Verifier (contacts the vendor's phone on file), Treasurer
+  (internal: the only holder of Airlock payment tools). Acme's billing agent is a separate vendor-side identity.
+  **The policy engine is code, not an agent** ("Airlock policy (code)" on the org chart). Agents carry messages;
+  they never vote on pay/hold.
+- **Primitive done properly:** per-vendor addresses (`acme@wise-egret.primitive.email`, routing hint only), every
+  outbound email can be replied to and the reply resumes the workflow, attachments in and out, agent-to-agent dispute
+  (price mismatch → Acme's billing agent reissues → auto-pay).
+- **Inkbox:** ask Alex to enable a real phone number → SMS verification to the phone on file (iMessage until then).
+- **Anti-rubber-stamp:** risk-scaled approval friction + `scheduled` undo window before release.
+- **Order:** core loop by 2pm → agent split + verification → bank-change rescue + decision screen + agent org
+  chart → evening: agent-to-agent dispute + reply polish → Sunday morning only if done: month-end batch.
+  Show Ethan (Primitive) the demo by dinner, and show Alex (Inkbox) the agent team.
+
 ## The pitch (one breath)
 
 > Agents will get fooled. Airlock makes sure getting fooled can't move money, so you can finally let your agent pay the bills.

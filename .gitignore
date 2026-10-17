@@ -53,3 +53,6 @@ runs/
 
 # Throwaway setup tests (not project code)
 scratch/
+
+# Python
+backend/.venv/
