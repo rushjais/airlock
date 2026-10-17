@@ -34,9 +34,10 @@ def send_code(change_request_id: str) -> dict:
     if cr["status"] != "pending_verification":
         return {"ok": False, "reason": f"change_request_{cr['status']}"}
     code = f"{secrets.randbelow(10**6):06d}"
-    text = (f"Kiln Supply Co. (Airlock): we received an email asking to send {vendor['name']}'s payments to a new "
-            f"account ({cr['new_destination']}). Did you request this?\n"
-            f"Reply YES {code} to confirm, or NO if you did not.")
+    possessive = vendor["name"] + ("'" if vendor["name"].endswith("s") else "'s")
+    new = cr["new_destination"].replace("account(s) ending", "an account ending")
+    text = (f"Kiln Supply Co. (Airlock): we received an email asking to send {possessive} payments to {new}. "
+            f"Did you request this?\nReply YES {code} to confirm, or NO if you did not.")
     phone = vendor["registered_phone"]  # the phone on file, never a number from the email
     channel = "sms"
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:

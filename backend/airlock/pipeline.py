@@ -111,7 +111,7 @@ def _handlers(case_id: str, message_id: str, verdict: dict) -> dict:
         if sent.get("ok"):
             _reply(message_id, "verification_pending", **common)
             agents.post(case_id, "verifier", "action",
-                        f"Sent a verification request to {common['vendor']}'s phone on file (ending "
+                        f"Sent a verification request to the phone {common['vendor']} has on file (ending "
                         f"{sent['phone_on_file_last4']}) by {sent['channel']}. Not the number in the email. "
                         f"Waiting for their answer; the invoice stays on hold.", sent)
             threading.Thread(target=_await_vendor, args=(case_id, message_id, change_request_id), daemon=True).start()
