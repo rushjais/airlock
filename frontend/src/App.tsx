@@ -172,7 +172,7 @@ function Threads(p: { cases: CaseRow[]; selected: string | null; follow: boolean
           {!p.follow && <button onClick={p.onFollow} className="text-[14px] text-muted underline underline-offset-4">Follow newest</button>}
         </div>
         <ol className="max-h-[168px] overflow-y-auto px-2 pb-2">
-          {p.cases.length === 0 && <li className="px-3 py-3 text-muted text-[16px]">No email yet. Send an invoice to {`acme@${INBOX_DOMAIN}`}.</li>}
+          {p.cases.length === 0 && <li className="px-3 py-3 text-muted text-[16px]">No email yet. Send an invoice to {`ap@${INBOX_DOMAIN}`}.</li>}
           {p.cases.map((c) => {
             const s = STATUS[c.status];
             return (
