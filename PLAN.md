@@ -17,7 +17,17 @@ Hacking 10:30am Sat Oct 17 → submissions + live demos 10:00am Sun Oct 18.
 - **Primitive done properly:** per-vendor addresses (`acme@wise-egret.primitive.email`, routing hint only), every
   outbound email can be replied to and the reply resumes the workflow, attachments in and out, agent-to-agent dispute
   (price mismatch → Acme's billing agent reissues → auto-pay).
-- **Inkbox:** ask Alex to enable a real phone number → SMS verification to the phone on file (iMessage until then).
+- **Agents coordinate over Primitive email threads (decided 12:20pm).** One address per agent (`intake@`,
+  `auditor@`, `verifier@`, `treasurer@`) and one per case (`case-<invoice>@`). Each invoice is worked in one thread
+  with CCs: Intake opens the case, **Auditor posts the policy engine's verdict (auditor@ is code, not an LLM)**,
+  Treasurer replies "paid, tr_…", Verifier joins for bank changes, and the admin is CC'd and can reply in-thread.
+  The thread is the audit log and the live UI. Agent-to-agent email is still only claims: a forged email to
+  `treasurer@` "from Auditor" does nothing, because Treasurer's only payment tool takes an Airlock authorization id
+  (demo this once). Inbound mail from our own agent addresses counts as internal only if it matches a message id
+  we sent; anything else claiming to be an agent is treated as external.
+- **Inkbox = the phone channel only:** Verifier texts (or calls) the vendor's phone on file; admin alerts go by
+  iMessage. Ask Alex to enable a real number for SMS. Submission tracks: Primitive + Inkbox if verification is
+  impressive, otherwise Primitive + Stripe.
 - **Anti-rubber-stamp:** risk-scaled approval friction + `scheduled` undo window before release.
 - **Order:** core loop by 2pm → agent split + verification → bank-change rescue + decision screen + agent org
   chart → evening: agent-to-agent dispute + reply polish → Sunday morning only if done: month-end batch.
