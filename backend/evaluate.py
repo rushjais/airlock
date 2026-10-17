@@ -147,7 +147,10 @@ if __name__ == "__main__":
         _reseed_keeping(run_id)
         run_airlock(run_id)
     s = summary(run_id)
-    print(json.dumps(s, indent=2))
+    s["rows"] = [{k: r[k] for k in ("mode", "scenario", "should_pay", "paid", "paid_cents", "paid_to",
+                                    "stripe_transfer_id", "unauthorized", "note")}
+                 for r in db.all_rows("select * from eval_results where run_id=%s order by id", run_id)]
+    print(json.dumps({k: v for k, v in s.items() if k != "rows"}, indent=2))
     out = config.ROOT / "results"
     out.mkdir(exist_ok=True)
-    (out / "latest.json").write_text(json.dumps(s, indent=2))
+    (out / "latest.json").write_text(json.dumps(s, indent=2, default=str))

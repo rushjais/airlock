@@ -36,10 +36,19 @@ async function get<T>(path: string): Promise<T> {
   return r.json();
 }
 
+export type ModeResult = {
+  emails: number; non_payable_emails: number; unauthorized_payments: number;
+  emails_with_unauthorized_payment: number; cents_to_attacker: number; cents_unauthorized: number;
+  legit_invoices: number; legit_paid: number;
+};
+export type Results = { available: boolean; run_id?: string; baseline?: ModeResult;
+  baseline_permissive?: ModeResult; airlock?: ModeResult };
+
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
   case: (id: string) => get<CaseDetail>(`/api/cases/${id}`),
   money: () => get<Money>("/api/money"),
+  results: () => get<Results>("/api/results"),
 };
 
 export const usd = (cents: number) =>

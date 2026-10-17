@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, usd, type CaseDetail, type CaseRow, type Money, type Post } from "./api";
+import { api, usd, type CaseDetail, type CaseRow, type ModeResult, type Money, type Post, type Results } from "./api";
 
 const POLL_MS = 1500;
 
@@ -30,30 +30,78 @@ export default function App() {
   const [picked, setPicked] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const selected = follow ? cases[0]?.id ?? null : picked;
+  const [view, setView] = useState<"live" | "results">("live");
 
   return (
     <div className="h-full grid grid-rows-[auto_1fr]">
-      <Header />
-      <main className="grid grid-cols-[minmax(260px,1fr)_minmax(0,2.1fr)_minmax(280px,1.15fr)] min-h-0">
+      <Header view={view} onView={setView} />
+      {view === "results" ? <ResultsView /> : <main className="grid grid-cols-[minmax(260px,1fr)_minmax(0,2.1fr)_minmax(280px,1.15fr)] min-h-0">
         <Outside cases={cases} selected={selected}
                  onPick={(id) => { setPicked(id); setFollow(false); }}
                  follow={follow} onFollow={() => setFollow(true)} />
         <Chamber caseId={selected} />
         <Inside money={money} />
-      </main>
+      </main>}
     </div>
   );
 }
 
-function Header() {
+function Header({ view, onView }: { view: "live" | "results"; onView: (v: "live" | "results") => void }) {
+  const tab = (v: "live" | "results", label: string) => (
+    <button onClick={() => onView(v)} aria-pressed={view === v}
+      className={`px-4 py-1.5 rounded-md text-[16px] font-semibold ${view === v ? "bg-ink text-panel" : "text-muted hover:text-ink"}`}>
+      {label}
+    </button>
+  );
   return (
-    <header className="flex items-baseline justify-between px-8 pt-6 pb-4 border-b border-rule bg-panel">
+    <header className="flex items-center justify-between px-8 pt-5 pb-4 border-b border-rule bg-panel">
       <div className="flex items-baseline gap-5">
         <h1 className="wide text-[34px] font-extrabold tracking-tight leading-none">Airlock</h1>
         <p className="text-muted text-[17px]">Email can make claims. It can't move money.</p>
       </div>
-      <p className="text-muted text-[15px]">Kiln Supply Co. accounts payable</p>
+      <nav className="flex gap-1">{tab("live", "Live")}{tab("results", "Measured results")}</nav>
     </header>
+  );
+}
+
+/* ---------- Measured results: the same emails, three agents ---------- */
+
+function ResultsView() {
+  const r = usePoll<Results>(api.results);
+  if (!r) return null;
+  if (!r.available) return <p className="p-10 text-muted text-[18px]">No measurement yet. Run backend/evaluate.py.</p>;
+  const cols: [string, string, ModeResult | undefined, boolean][] = [
+    ["Agent told to pay invoices as instructed", "Same model, a raw pay tool, no Airlock", r.baseline_permissive, false],
+    ["Agent told to watch for fraud", "Same model, a raw pay tool, no Airlock", r.baseline, false],
+    ["Agent with Airlock", "Same model, Airlock's tools only", r.airlock, true],
+  ];
+  const total = r.airlock?.emails ?? 0;
+  return (
+    <main className="overflow-y-auto px-10 py-8">
+      <p className="text-[18px] text-muted max-w-[70ch] mb-8">
+        The same {total} emails, run through each agent with real Stripe test transfers: {r.airlock?.non_payable_emails} attacks
+        or payments that aren't owed, and {r.airlock?.legit_invoices} legitimate invoices.
+      </p>
+      <div className="grid grid-cols-3 gap-0 border-y border-rule">
+        {cols.map(([title, sub, m, ours]) => m && (
+          <section key={title} className={`px-7 py-7 ${ours ? "bg-panel border-x-[6px] border-trusted/70" : "border-r border-rule last:border-r-0"}`}>
+            <h2 className="text-[22px] font-bold leading-tight">{title}</h2>
+            <p className="text-[15px] text-muted mb-7">{sub}</p>
+            <p className="text-[16px] text-muted">Sent to attackers</p>
+            <p className={`wide num font-extrabold text-[56px] leading-none mb-6 ${m.cents_to_attacker ? "text-denied" : "text-trusted"}`}>
+              {usd(m.cents_to_attacker)}
+            </p>
+            <dl className="space-y-3 text-[18px]">
+              <div className="flex justify-between gap-4"><dt>Payments that shouldn't have happened</dt>
+                <dd className={`num font-bold ${m.unauthorized_payments ? "text-denied" : ""}`}>{m.unauthorized_payments}</dd></div>
+              <div className="flex justify-between gap-4"><dt>Legitimate invoices paid</dt>
+                <dd className={`num font-bold ${m.legit_paid < m.legit_invoices ? "text-untrusted" : "text-trusted"}`}>{m.legit_paid} of {m.legit_invoices}</dd></div>
+            </dl>
+          </section>
+        ))}
+      </div>
+      <p className="text-[14px] text-muted mt-6">Run {r.run_id}. Model outputs vary between runs; numbers are from this run only.</p>
+    </main>
   );
 }
 

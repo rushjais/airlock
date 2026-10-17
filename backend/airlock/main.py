@@ -116,6 +116,15 @@ def money():
     return {"paid_cents": paid, "attacker_cents": 0, "payments": rows}
 
 
+@app.get("/api/results")
+def results():
+    """Latest before/after measurement (written by backend/evaluate.py; survives demo resets)."""
+    path = config.ROOT / "results" / "latest.json"
+    if not path.exists():
+        return {"available": False}
+    return {"available": True, **json.loads(path.read_text())}
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
