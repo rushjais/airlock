@@ -159,11 +159,36 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
         if verdict["next_action"] == "execute_payment":
             _treasurer_turn(case_id, message_id, verdict)
     else:
-        db.one("update change_requests set status='verified' where id=%s returning id", change_request_id)
+        db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
         agents.post(case_id, "verifier", "result",
                     "The vendor confirmed the change with the correct one-time code. That's evidence, not authority: "
                     "an admin must approve the new account on the authenticated screen before any payment goes there.")
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
+        _notify_admin(case_id, change_request_id)
+
+
+def _notify_admin(case_id: str, change_request_id: str) -> None:
+    """Text the admin a signed approval link. The link is the authentication; a reply to the text never is."""
+    from . import approvals
+    phone = config.get("DEMO_ADMIN_PHONE")
+    link = approvals.approval_link(change_request_id)
+    log.info("approval link for %s: %s", change_request_id, link)
+    if not phone:
+        return
+    cr = db.one("select c.*, v.name from change_requests c join vendors v on v.id=c.vendor_id where c.id=%s", change_request_id)
+    text = (f"Airlock: {cr['name']} confirmed a bank change to an account ending {cr['new_last4']}. "
+            f"Review and approve here (replying to this text does nothing): {link}")
+    try:
+        from inkbox import Inkbox
+        with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
+            ident = ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
+            try:
+                ident.send_text(to=phone, text=text)
+            except Exception:
+                ident.send_imessage(to=phone, text=text)
+        agents.post(case_id, "verifier", "action", "Sent the admin a signed approval link on their phone.", send_email=False)
+    except Exception as e:
+        log.warning("admin notify failed: %s", e)
 
 
 def process(message_id: str) -> dict:

@@ -6,10 +6,11 @@ import json
 import logging
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 from email.utils import parseaddr
 
-from . import agents, config, db, ingest, pipeline, primitive
+from . import agents, approvals, config, db, ingest, pipeline, policy, primitive
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("airlock.api")
@@ -195,6 +196,77 @@ def demo_reset(request: Request):
     from . import seed
     seed.main(reset=True)
     return {"ok": True}
+
+
+class ApprovalAuth(BaseModel):
+    exp: int
+    t: str
+
+
+class ApproveBody(ApprovalAuth):
+    typed_last4: str
+    acknowledged_flags: bool = False
+    seconds_on_page: float = 0
+
+
+class AuthBody(ApprovalAuth):
+    authorization_id: str
+
+
+def _admin(cr_id: str, body: ApprovalAuth) -> str:
+    if not approvals.check(cr_id, body.exp, body.t):
+        raise HTTPException(403, "approval link invalid or expired")
+    return "admin (signed link)"
+
+
+@app.get("/api/approvals/{cr_id}")
+def approval_details(cr_id: str, exp: int, t: str):
+    if not approvals.check(cr_id, exp, t):
+        raise HTTPException(403, "approval link invalid or expired")
+    d = approvals.details(cr_id)
+    if not d:
+        raise HTTPException(404)
+    return d
+
+
+@app.post("/api/approvals/{cr_id}/approve")
+def approval_approve(cr_id: str, body: ApproveBody):
+    return approvals.approve(cr_id, _admin(cr_id, body), body.typed_last4, body.acknowledged_flags, body.seconds_on_page)
+
+
+@app.post("/api/approvals/{cr_id}/reject")
+def approval_reject(cr_id: str, body: ApprovalAuth):
+    admin = _admin(cr_id, body)
+    verdict = policy.resolve_change_rejected(cr_id, {"rejected_by": admin, "reply": "rejected by admin"})
+    if verdict["next_action"] == "execute_payment":
+        pipeline.execute_payment(verdict["authorization_id"])
+    return verdict
+
+
+@app.post("/api/approvals/{cr_id}/cancel")
+def approval_cancel(cr_id: str, body: AuthBody):
+    return approvals.cancel(body.authorization_id, _admin(cr_id, body))
+
+
+@app.post("/api/approvals/{cr_id}/reconfirm")
+def approval_reconfirm(cr_id: str, body: AuthBody):
+    return approvals.reconfirm(body.authorization_id, _admin(cr_id, body))
+
+
+@app.on_event("startup")
+def _start_workers():
+    approvals.start_release_worker()
+
+
+@app.post("/api/demo/replay/{scenario:path}")
+def demo_replay(scenario: str, request: Request, background: BackgroundTasks):
+    """Local-only: push a fixture scenario through the live pipeline (demo backup if live email misbehaves)."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "replay is only available locally")
+    from . import replay
+    message_id, _ = replay.replay(scenario, unique=True)
+    background.add_task(_process, message_id)
+    return {"ok": True, "message_id": message_id}
 
 
 @app.get("/api/results")

@@ -36,6 +36,7 @@ def _claim(auth_id: str) -> dict | None:
            from vendors v
            where a.id=%s and a.status in ('authorized','scheduled') and a.expires_at > now()
              and (a.release_at is null or a.release_at <= now())
+             and not a.needs_reconfirm
              and v.id = a.vendor_id and v.registry_version = a.registry_version
            returning a.*""", auth_id)
 
@@ -51,6 +52,8 @@ def _why_not(auth_id: str) -> str:
         db.one("update payment_authorizations set status='invalidated' where id=%s and status in "
                "('authorized','scheduled','pending_approval') returning id", auth_id)
         return "registry_changed_invalidated"
+    if a["needs_reconfirm"]:
+        return "awaiting_admin_reconfirmation"
     if a["release_at"] and a["release_at"] > db.one("select now() as t")["t"]:
         return "in_undo_window"
     return "authorization_expired"

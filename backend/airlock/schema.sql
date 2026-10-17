@@ -114,6 +114,7 @@ create table payment_authorizations (
   approved_by text,
   approved_at timestamptz,
   release_at timestamptz,                    -- undo window: executor refuses before this
+  needs_reconfirm boolean not null default false, -- fast approval on a flagged change: admin must confirm again
   expires_at timestamptz not null,
   stripe_transfer_id text,
   last_error text,
@@ -129,6 +130,7 @@ create table change_requests (
   base_registry_version int not null,
   old_destination_last4 text not null,
   new_destination text not null,             -- quarantined claim; never used for payment unless admin approves
+  new_last4 text,                            -- the account the email asked for (last 4 digits)
   source_message_id uuid not null references messages(id),
   held_obligation_id text references obligations(id),
   otp_hash text,

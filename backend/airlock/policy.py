@@ -93,6 +93,8 @@ def _open_change_request(message_id: str, vendor: dict, ev: F.Evidence, obligati
                     values (%s,%s,%s,%s,%s,%s) returning id""",
                  vendor["id"], vendor["registry_version"], vendor["destination_last4"],
                  f"account(s) ending {new_dest}", message_id, obligation["id"] if obligation else None)
+    others = sorted((F.account_last4s(ev.body) | F.account_last4s(ev.attachment_text)) - {vendor["destination_last4"]})
+    db.one("update change_requests set new_last4=%s where id=%s returning id", others[0] if others else None, row["id"])
     return str(row["id"])
 
 
