@@ -124,6 +124,11 @@ function DemoButtons() {
         className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-dashed border-line text-muted hover:text-text disabled:opacity-50">
         {busy === "dispute" ? "Sending" : "Price dispute"}
       </button>
+      <button disabled={busy !== null}
+        onClick={async () => { setBusy("forged"); await api.forgedAuditor(); setTimeout(() => setBusy(null), 1500); }}
+        className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-dashed border-line text-muted hover:text-text disabled:opacity-50">
+        {busy === "forged" ? "Sending" : "Forged auditor"}
+      </button>
       {SCENES.map(([id, label]) => (
         <button key={id} disabled={busy !== null}
           onClick={async () => { setBusy(id); await api.replay(id); setTimeout(() => setBusy(null), 1500); }}
