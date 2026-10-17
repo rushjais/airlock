@@ -29,6 +29,29 @@ def _verdict(d: dict | None) -> dict:
             "facts": {k: facts[k] for k in keep if facts.get(k) is not None}}
 
 
+def _case_for(message_id: str, verdict: dict | None = None) -> str:
+    """The case thread for this email, opened on first contact so the control room shows outside agents too."""
+    from . import agents
+    existing = db.one("select id from cases where source_message_id=%s", message_id)
+    if existing:
+        return existing["id"]
+    facts = (verdict or {}).get("facts") or {}
+    vendor = db.one("select name from vendors where id=%s", facts.get("vendor_id")) if facts.get("vendor_id") else None
+    m = db.one("select from_address from messages where id=%s", message_id)
+    facts.setdefault("from_domain", m["from_address"].split("@")[-1])
+    return agents.open_case(message_id, facts, vendor["name"] if vendor else None)
+
+
+def _mirror(message_id: str, kind: str, text: str, verdict: dict | None = None) -> None:
+    from . import agents
+    case_id = _case_for(message_id, verdict)
+    agents.post(case_id, "external", kind, text, verdict or {}, send_email=False)
+    if verdict is not None:
+        agents.post(case_id, "auditor", "verdict", pipeline._auditor_text(verdict), verdict)
+        status = {"pay": "open", "hold": "held", "deny": "denied"}.get(verdict["decision"], "needs_approval")
+        db.one("update cases set status=%s where id=%s and status <> 'paid' returning id", status, case_id)
+
+
 def _latest(message_id: str) -> dict | None:
     return db.one("select * from decisions where message_id=%s order by created_at desc limit 1", message_id)
 
@@ -82,7 +105,11 @@ def propose(ref: MessageRef):
             return {"decision": "hold", "reason": "reader_unavailable", "flags": [],
                     "next_action": "retry propose_payment later; nothing was paid",
                     "facts": {"error": type(e).__name__}}
-    return _verdict(policy.propose_payment(ref.message_id))
+    d = policy.propose_payment(ref.message_id)
+    _mirror(ref.message_id, "action", "Proposed paying this email through Airlock's MCP server.\n"
+            + pipeline._intake_text(ref.message_id, d["facts"]).replace(
+                "I have no payment access; Auditor, over to you.", "Asking Airlock to decide."), d)
+    return _verdict(d)
 
 
 @router.get("/cases", dependencies=[Depends(_auth)])
@@ -106,8 +133,16 @@ def execute(ref: AuthRef):
     why = r.get("reason") or (r.get("detail") or {}).get("reason") if isinstance(r.get("detail", {}), dict) else r.get("reason")
     out = {"decision": "pay" if r.get("ok") else "deny", "reason": "executed" if r.get("ok") else why,
            "flags": [], "next_action": "none" if r.get("ok") else "get_decision"}
+    a = db.one("select source_message_id from payment_authorizations where id=%s", ref.authorization_id) \
+        if len(ref.authorization_id) == 36 else None
     if r.get("ok"):
         out["facts"] = {"transfer_id": r["transfer_id"], "amount_cents": r["amount_cents"]}
+    if a:
+        msg = (f"Executed authorization {ref.authorization_id[:8]}: ${r['amount_cents'] / 100:,.2f} to the account on file. "
+               f"Transfer {r['transfer_id']}." if r.get("ok") else f"Tried to execute authorization {ref.authorization_id[:8]}: refused ({why}).")
+        _mirror(str(a["source_message_id"]), "result", msg)
+        if r.get("ok"):
+            db.one("update cases set status='paid' where source_message_id=%s returning id", a["source_message_id"])
     return out
 
 
@@ -124,6 +159,12 @@ def verify(ref: ChangeRef):
                 "next_action": "escalate_to_admin; the invoice stays held and nothing was paid",
                 "facts": {"error": str(e)[:160]}}
     if sent.get("ok"):
+        cr = db.one("select source_message_id from change_requests where id=%s", ref.change_request_id)
+        from . import agents
+        agents.post(_case_for(str(cr["source_message_id"])), "verifier", "action",
+                    f"Asked by an outside agent: sent a verification request to the phone on file (ending "
+                    f"{sent['phone_on_file_last4']}) by {sent['channel']}. The invoice stays held until they answer.",
+                    sent, send_email=False)
         threading.Thread(target=_await_vendor, args=(ref.change_request_id,), daemon=True).start()
     return {"decision": "hold", "reason": "awaiting_vendor_confirmation" if sent.get("ok") else sent.get("reason"),
             "flags": [], "next_action": "poll get_decision until the vendor answers", "facts": sent}
@@ -133,7 +174,13 @@ def _await_vendor(change_request_id: str) -> None:
     from . import verify as V
     reply = V.wait_for_reply(change_request_id)
     if reply and reply["answer"] == "no":  # not us -> the held invoice pays the account on file
-        policy.resolve_change_rejected(change_request_id, {"vendor_reply": reply["reply"], "reply": reply["reply"]})
+        from . import agents
+        cr = db.one("select source_message_id from change_requests where id=%s", change_request_id)
+        case_id = _case_for(str(cr["source_message_id"]))
+        agents.post(case_id, "verifier", "result", f"The vendor answered from the phone on file: \"{reply['reply']}\". "
+                    "They did NOT change banks, so the email's account change is rejected.", send_email=False)
+        v = policy.resolve_change_rejected(change_request_id, {"vendor_reply": reply["reply"], "reply": reply["reply"]})
+        agents.post(case_id, "auditor", "verdict", pipeline._auditor_text(v), v)
     elif reply and reply["answer"] == "yes":  # evidence only; an admin must approve on the signed page
         db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
         cr = db.one("select source_message_id from change_requests where id=%s", change_request_id)

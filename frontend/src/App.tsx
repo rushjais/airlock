@@ -122,6 +122,7 @@ const WHO: Record<string, { name: string; role: string }> = {
   treasurer: { name: "Treasurer", role: "agent with Airlock's payment tools" },
   verifier: { name: "Verifier", role: "contacts the phone already on file" },
   admin: { name: "Admin", role: "human reply in the thread" },
+  external: { name: "Outside agent", role: "connected through Airlock's MCP server" },
   unverified: { name: "Unsigned message", role: "not from an Airlock agent" },
 };
 
