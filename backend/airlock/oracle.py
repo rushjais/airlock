@@ -16,7 +16,7 @@ ORDER = ["01_legit_invoice", "02_hacked_vendor_bank_change", "03_lookalike_domai
 def run(reseed: bool = True) -> list[dict]:
     expected = {s["id"]: s for s in json.loads((config.SCENARIOS / "expected.json").read_text())["scenarios"]}
     if reseed:
-        seed.main(reset=True)
+        seed.main(reset=True, demo=False)
     rows = []
     for sid in ORDER:
         mid, _ = replay.replay(sid)

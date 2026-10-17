@@ -17,7 +17,8 @@ from . import config
 SHORT = {"ven_acme": "acme", "ven_brightline": "brightline", "ven_corvid": "corvid"}
 
 
-def main(reset: bool) -> None:
+def main(reset: bool, demo: bool = True) -> None:
+    """demo=False ignores .env overrides (tests and the scenario oracle use pure fixtures)."""
     company = json.loads((config.FIXTURES / "company.json").read_text())
     history = json.loads((config.FIXTURES / "invoice_history.json").read_text())["history"]
     schema = (pathlib.Path(__file__).parent / "schema.sql").read_text()
@@ -31,8 +32,8 @@ def main(reset: bool) -> None:
                      (c["name"], c["auto_pay_limit_cents"]))
         for v in company["vendors"]:
             short = SHORT[v["id"]]
-            email = config.get(f"DEMO_VENDOR_EMAIL_{short.upper()}") or v["registered_email"]
-            phone = config.get(f"DEMO_VENDOR_PHONE_{short.upper()}") or v["registered_phone"]
+            email = (demo and config.get(f"DEMO_VENDOR_EMAIL_{short.upper()}")) or v["registered_email"]
+            phone = (demo and config.get(f"DEMO_VENDOR_PHONE_{short.upper()}")) or v["registered_phone"]
             conn.execute(
                 """insert into vendors (id, name, registered_domain, registered_email, registered_phone,
                        inbox_alias, stripe_account_id, destination_last4, registry_version)
@@ -68,4 +69,4 @@ def main(reset: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(reset="--reset" in sys.argv)
+    main(reset="--reset" in sys.argv, demo="--fixtures-only" not in sys.argv)
