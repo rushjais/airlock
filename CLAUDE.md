@@ -1,13 +1,17 @@
 # CLAUDE.md: Airlock
 
 Read this first, every session. These rules override convenience.
+Then read `PLAN.md` (pitch, track map, demo script, checkpoints, verified integration facts).
 
 ## What we're building
 Airlock lets an accounts-payable agent with its own inbox pay legitimate invoices automatically,
 while nothing an email says can authorize a payment. Email can make claims. It never supplies authority.
 
+The agent is Airlock's customer: it uses Airlock through MCP tools, and every non-pay answer carries a
+`next_action` the agent can follow to resolve the case itself. Humans set policy and approve destinations.
+
 Demo company: Kiln Supply Co. (fictional). Fixtures in `fixtures/`, scenario emails and the
-expected outcome for each in `scenarios/`.
+expected outcome for each in `scenarios/`. Demo scenes: 01, 02 (+ resolution), 04, 06.
 
 ## SECURITY INVARIANTS (never violate, every one has a test)
 1. The Stripe secret key lives only in the payment executor. No other process, tool, or prompt sees it.
@@ -63,21 +67,29 @@ pending_approval | authorized | executing | succeeded | failed | unknown | expir
 Obligation: proposed | approved | accepted | reserved | settling | settled | cancelled
 
 ## Notifications
-- Admin: Inkbox SMS + email with a link to the authenticated approval screen. A text reply is never authorization.
-- Vendor verification: Inkbox SMS to registered phone with a 6-digit code (hash stored, 10 min expiry, single use).
-  The vendor's reply is evidence; the admin's click is authorization.
+- Admin: Inkbox **iMessage** + email with a link to the authenticated approval screen. A text reply is never authorization.
+- Vendor verification: Inkbox **iMessage** to the registered phone with a 6-digit code (hash stored, 10 min expiry,
+  single use). The vendor's reply is evidence; the admin's click is authorization.
+- Our Inkbox plan has no phone numbers (SMS returns 402). iMessage goes through Inkbox's shared router, and each
+  recipient must enroll once (`connect @airlock` to the router, then one message to the returned number).
+- Real phone numbers never go in fixtures or the repo (it is public). Read `DEMO_ADMIN_PHONE` /
+  `DEMO_VENDOR_PHONE_<VENDOR>` from `.env` and treat them as the registry's phone on file at seed time.
 
 ## Stack
 FastAPI + Supabase Postgres + React/Vite + Tailwind + shadcn/ui. MCP server via Manufact mcp-use.
-Primitive for the agent inbox, Inkbox for SMS, Stripe test mode (Connect transfers; if Connect fails,
-PaymentIntents labeled as a simulation on screen).
+Primitive for the agent inbox (`ap@wise-egret.primitive.email`), Inkbox iMessage for verification/notifications,
+Stripe test mode Connect transfers to accounts created with **Accounts v2** (v1 `Account.create` is disabled for
+this platform). If Connect breaks, fall back to PaymentIntents labeled as a simulation on screen.
+Integration details that were verified (payload shapes, attachment fetch, headers, gotchas) are in `PLAN.md`.
 
-## Build order (do not skip ahead)
+## Build order (do not skip ahead; times and fallbacks in PLAN.md)
 1. Webhook -> message stored -> reader -> claims -> propose_payment -> execute -> Stripe test transfer (scenario 01).
-2. Tests for invariants 2-6 green. Scenarios 02, 05, 06.
-3. Decision/lineage screen.
-4. Vendor verification + admin approval (scenario 02 resolution).
-5. Gauntlet (attacker agents) only if 1-4 work.
+2. Tests for invariants 2-6 green. All scenarios in expected.json. 20 concurrent -> 1 transfer.
+3. MCP server for the agent + decision/lineage screen.
+4. Vendor verification + admin approval (scenario 02 resolution) + spending-controls screen.
+5. Before/after: permissive baseline agent vs Airlock, real counted numbers (baseline money goes only to the
+   Attacker demo test account).
+6. Extras (attack suite, signed vendor agent) only if 1-5 work. Feature freeze 8am Sunday.
 
 ## Tests to write before enforcement code
 - email-supplied account never reaches the Stripe call

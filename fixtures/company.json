@@ -18,7 +18,7 @@
       "registered_domain": "acmemetals.com",
       "registered_email": "billing@acmemetals.com",
       "registered_phone": "+1-555-0182",
-      "stripe_account_id": "acct_ACME_TEST_REPLACE",
+      "stripe_account_id": "acct_1URQvLKPNEHm2UB5",
       "destination_last4": "4821",
       "registry_version": 1,
       "public_key": null
@@ -29,7 +29,7 @@
       "registered_domain": "brightlinefreight.com",
       "registered_email": "ap@brightlinefreight.com",
       "registered_phone": "+1-555-0147",
-      "stripe_account_id": "acct_BRIGHTLINE_TEST_REPLACE",
+      "stripe_account_id": "acct_1URQwJKPNErWfgaT",
       "destination_last4": "2093",
       "registry_version": 1,
       "public_key": null
@@ -40,7 +40,7 @@
       "registered_domain": "corvidsoftware.io",
       "registered_email": "billing@corvidsoftware.io",
       "registered_phone": "+1-555-0133",
-      "stripe_account_id": "acct_CORVID_TEST_REPLACE",
+      "stripe_account_id": "acct_1URQwSKPNE7Kq6jb",
       "destination_last4": "7710",
       "registry_version": 1,
       "public_key": null

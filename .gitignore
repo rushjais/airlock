@@ -50,3 +50,6 @@ runs/
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Throwaway setup tests (not project code)
+scratch/
