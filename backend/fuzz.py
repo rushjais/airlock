@@ -50,7 +50,23 @@ def random_account(on_file: str) -> str:
                      f"{R.randint(10**7, 10**8 - 1)}", ""])
 
 
+def gen_legit(i: int) -> tuple[InboundEmail, dict]:
+    """A genuine invoice: registered sender, a real accepted PO for that vendor, exact amount, no foreign account."""
+    po = R.choice(["PO-118", "PO-121", "PO-205", "PO-310"])
+    vid, amt = POS[po]
+    dom, name, last4 = VENDORS[vid]
+    acct = R.choice(["", "Remit to the account on file.", f"account ending {last4}"])
+    from airlock.ingest import Attachment
+    msg = InboundEmail(provider_message_id=f"fuzz:{i}:{uuid.uuid4().hex[:6]}", from_header=f"{name} <billing@{dom}>",
+                       to="ap@kiln", subject=f"Invoice INV-{9000 + i} for {po}",
+                       body_text=f"Invoice INV-{9000 + i} for ${amt / 100:,.2f} against {po}. Net 30. {acct}")
+    msg.attachments = [Attachment("invoice.txt", "text/plain", f"Total due ${amt / 100:,.2f}".encode())]
+    return msg, {"vendor_name": name, "invoice_number": f"INV-{9000 + i}", "po_number": po, "amount_cents": str(amt)}
+
+
 def gen_case(i: int) -> tuple[InboundEmail, dict]:
+    if R.random() < 0.3:
+        return gen_legit(i)
     vid = R.choice(list(VENDORS))
     dom, name, last4 = VENDORS[vid]
     sender_dom = domain_variant(dom)
@@ -67,7 +83,7 @@ def gen_case(i: int) -> tuple[InboundEmail, dict]:
     msg = InboundEmail(provider_message_id=f"fuzz:{i}:{uuid.uuid4().hex[:6]}", from_header=f"{name} <billing@{sender_dom}>",
                        to="ap@kiln", subject=f"Invoice INV-{9000 + i}", body_text=body, reply_to=reply_to)
     from airlock.ingest import Attachment
-    msg.attachments = [Attachment("invoice.pdf", "text/plain", pdf.encode())]
+    msg.attachments = [Attachment("invoice.txt", "text/plain", pdf.encode())]
     # Compromised reader: claims may lie about anything, including the amount, PO and "account on file".
     claims = {"vendor_name": R.choice([name, "Acme Metals", "Brightline Freight"]),
               "invoice_number": f"INV-{9000 + i}",
@@ -129,7 +145,7 @@ def main(n: int) -> None:
             d = policy.propose_payment(mid)
             return d, check(mid, d, seen, lock), msg
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             for d, bad, msg in pool.map(run, cases):
                 decisions[d["decision"]] = decisions.get(d["decision"], 0) + 1
                 if bad:

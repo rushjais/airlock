@@ -92,6 +92,7 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
         <Total label="Stolen" cents={s?.stolen_cents ?? 0} cls={(s?.stolen_cents ?? 0) > 0 ? "text-bad" : "text-ok"} big />
       </dl>
       <div className="flex items-center gap-2">
+        {DEMO && <DemoButtons />}
         {tab("live", "Live")}{tab("results", "Measured results")}
         <button onClick={p.onTheme} className="px-3 py-1.5 rounded-md text-[15px] font-semibold border border-line text-muted hover:text-text">
           {p.light ? "Dark" : "Light"}
@@ -102,6 +103,30 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
         </button>
       </div>
     </header>
+  );
+}
+
+const DEMO = new URLSearchParams(location.search).has("demo");
+const SCENES: [string, string][] = [
+  ["01_legit_invoice", "Legit invoice"],
+  ["02_hacked_vendor_bank_change", "Hacked bank change"],
+  ["04_hidden_pdf_instruction", "Hidden PDF trick"],
+  ["06_replay", "Duplicate"],
+];
+
+/* Backup for live demos (only with ?demo in the URL): push a scenario email through the real pipeline. */
+function DemoButtons() {
+  const [busy, setBusy] = useState<string | null>(null);
+  return (
+    <div className="flex items-center gap-1.5 mr-3">
+      {SCENES.map(([id, label]) => (
+        <button key={id} disabled={busy !== null}
+          onClick={async () => { setBusy(id); await api.replay(id); setTimeout(() => setBusy(null), 1500); }}
+          className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-dashed border-line text-muted hover:text-text disabled:opacity-50">
+          {busy === id ? "Sending" : label}
+        </button>
+      ))}
+    </div>
   );
 }
 
