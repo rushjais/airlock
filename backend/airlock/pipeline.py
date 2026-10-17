@@ -175,11 +175,13 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
         agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
         if verdict["next_action"] == "execute_payment":
             _treasurer_turn(case_id, message_id, verdict)
+        _admin_brief(case_id, change_request_id, "no")
     elif reply["answer"] != "yes":
         agents.post(case_id, "verifier", "result",
                     f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
                     "Still holding; escalating to an admin.", reply)
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
+        _admin_brief(case_id, change_request_id, "unclear")
     else:
         db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
         agents.post(case_id, "verifier", "result",
@@ -187,6 +189,45 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
                     "an admin must approve the new account on the authenticated screen before any payment goes there.")
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
         _notify_admin(case_id, change_request_id)
+
+
+def _text_admin(text: str) -> bool:
+    phone = config.get("DEMO_ADMIN_PHONE")
+    if not phone:
+        return False
+    try:
+        from inkbox import Inkbox
+        with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
+            ident = ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
+            try:
+                ident.send_text(to=phone, text=text)
+            except Exception:
+                ident.send_imessage(to=phone, text=text)
+        return True
+    except Exception as e:
+        log.warning("admin text failed: %s", e)
+        return False
+
+
+def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
+    """Tell the admin what the agents figured out. Only 'needs you' when a human decision is truly required."""
+    cr = db.one("""select c.*, v.name, v.destination_last4 from change_requests c join vendors v on v.id=c.vendor_id
+                   where c.id=%s""", change_request_id)
+    ob = db.one("select amount_cents, po_number from obligations where id=%s", cr["held_obligation_id"]) \
+        if cr["held_obligation_id"] else None
+    amt = f"${ob['amount_cents'] / 100:,.2f}" if ob else "the invoice"
+    how = "called" if (cr["evidence"] or {}).get("channel") == "voice call" else "texted"
+    if outcome == "no":
+        text = (f"Airlock FYI (no action needed): an email asked to move {cr['name']}'s payments to an account ending "
+                f"{cr['new_last4']}. I {how} {cr['name']}'s phone on file and they said they did NOT request it. "
+                f"I rejected the change and paid {amt} to the account on file (ending {cr['destination_last4']}).")
+    else:
+        text = (f"Airlock needs you: an email asked to move {cr['name']}'s payments to an account ending "
+                f"{cr['new_last4']}. I {how} their phone on file but couldn't get a clear answer. {amt} is on hold and "
+                f"nothing was paid. Please call {cr['name']} yourself before approving anything.")
+    if _text_admin(text):
+        agents.post(case_id, "verifier", "action", "Briefed the admin by text: " + text.split(": ", 1)[1][:220],
+                    send_email=False)
 
 
 def _notify_admin(case_id: str, change_request_id: str) -> None:
@@ -198,19 +239,11 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
     if not phone:
         return
     cr = db.one("select c.*, v.name from change_requests c join vendors v on v.id=c.vendor_id where c.id=%s", change_request_id)
-    text = (f"Airlock: {cr['name']} confirmed a bank change to an account ending {cr['new_last4']}. "
-            f"Review and approve here (replying to this text does nothing): {link}")
-    try:
-        from inkbox import Inkbox
-        with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
-            ident = ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
-            try:
-                ident.send_text(to=phone, text=text)
-            except Exception:
-                ident.send_imessage(to=phone, text=text)
+    text = (f"Airlock needs you: an email asked to move {cr['name']}'s payments to an account ending "
+            f"{cr['new_last4']}. I checked with {cr['name']} on their phone on file and they confirmed it with the "
+            f"one-time code. That's evidence, not approval. Review and approve here (replying does nothing): {link}")
+    if _text_admin(text):
         agents.post(case_id, "verifier", "action", "Sent the admin a signed approval link on their phone.", send_email=False)
-    except Exception as e:
-        log.warning("admin notify failed: %s", e)
 
 
 def process(message_id: str) -> dict:
