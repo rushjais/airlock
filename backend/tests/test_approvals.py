@@ -93,3 +93,21 @@ def test_signed_link_checks():
     assert approvals.check("cr-1", exp, good)
     assert not approvals.check("cr-2", exp, good)
     assert not approvals.check("cr-1", exp - 120, approvals._sig("cr-1", exp - 120))  # expired
+
+
+def test_rejected_change_pays_account_on_file_by_default():
+    cr = _held_change()
+    d = policy.resolve_change_rejected(cr, {"reply": "NO"})
+    assert d["decision"] == "pay" and d["reason"] == "change_rejected_paying_registry_destination"
+    a = db.one("select stripe_account_id, amount_cents from payment_authorizations where id=%s", d["authorization_id"])
+    v = db.one("select stripe_account_id from vendors where id='ven_acme'")
+    assert a["stripe_account_id"] == v["stripe_account_id"] and a["amount_cents"] == 188000
+
+
+def test_rejected_change_holds_when_policy_says_hold():
+    db.one("update company set after_rejected_change='hold' returning id")
+    cr = _held_change()
+    d = policy.resolve_change_rejected(cr, {"reply": "NO"})
+    assert d["decision"] == "hold" and d["reason"] == "change_rejected_held_by_policy"
+    assert not d.get("authorization_id")
+    assert db.one("select status from change_requests where id=%s", cr)["status"] == "rejected"

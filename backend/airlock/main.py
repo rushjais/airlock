@@ -4,6 +4,7 @@
 """
 import json
 import logging
+from typing import Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel
@@ -232,7 +233,22 @@ def controls():
                            + (select count(*) from cases where status='needs_approval') as n""")["n"]
     return {"auto_pay_limit_cents": company["auto_pay_limit_cents"] if company else 0,
             "undo_window_seconds": company["undo_window_seconds"] if company else 0,
+            "after_rejected_change": company["after_rejected_change"] if company else "pay_on_file",
             "standing_limits": limits, "approval_queue": queue}
+
+
+class RejectedChangeSetting(BaseModel):
+    value: Literal["pay_on_file", "hold"]
+
+
+@app.post("/api/controls/after-rejected-change")
+def set_after_rejected_change(body: RejectedChangeSetting, request: Request):
+    """A human policy setting, changed only from this laptop (no agent tool can reach it). It can make Airlock
+    stricter (hold) or let a phone-confirmed rejection pay the registry account; it never adds a new destination."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "policy settings are only editable locally")
+    db.one("update company set after_rejected_change=%s returning id", body.value)
+    return {"ok": True, "after_rejected_change": body.value}
 
 
 @app.post("/api/demo/reset")

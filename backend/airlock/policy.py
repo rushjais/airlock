@@ -273,6 +273,11 @@ def resolve_change_rejected(change_request_id: str, evidence: dict) -> dict:
     if ob["status"] != "accepted" or claimed != ob["amount_cents"]:
         return _result(cr["source_message_id"], "hold", "change_rejected_invoice_needs_review", [], facts,
                        "notify_admin", subject_id=ob["id"])
+    setting = (db.one("select after_rejected_change from company") or {}).get("after_rejected_change", "pay_on_file")
+    if setting == "hold":  # the admin chose to review every rejected change before anything pays
+        facts.update(policy_setting="after_rejected_change=hold")
+        return _result(cr["source_message_id"], "hold", "change_rejected_held_by_policy", [], facts,
+                       "notify_admin", subject_id=ob["id"])
     inv = _first(claims_for(str(cr["source_message_id"])), "invoice_number")
     auth_id = _authorize(ob, vendor, str(cr["source_message_id"]), inv, "authorized")
     if auth_id is None:

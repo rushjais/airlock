@@ -10,7 +10,9 @@ create table company (
   id text primary key default 'kiln',
   name text not null,
   auto_pay_limit_cents int not null,
-  undo_window_seconds int not null default 60
+  undo_window_seconds int not null default 60,
+  -- after the vendor's phone on file says "we did NOT change banks": pay the registry account, or hold for a human
+  after_rejected_change text not null default 'pay_on_file' check (after_rejected_change in ('pay_on_file','hold'))
 );
 
 create table vendors (

@@ -347,6 +347,7 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
           <div className="flex justify-between gap-3"><dt className="text-muted">Waiting for a human</dt>
             <dd className={`num font-bold ${(ctl?.approval_queue ?? 0) > 0 ? "text-held" : ""}`}>{ctl?.approval_queue ?? 0}</dd></div>
         </dl>
+        <AfterRejected value={ctl?.after_rejected_change} />
         {(ctl?.standing_limits ?? []).map((l) => (
           <div key={l.vendor + l.line_item} className="mt-4">
             <div className="flex justify-between text-[14px]"><span className="text-muted">{l.vendor}: {l.line_item}</span>
@@ -359,6 +360,26 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
       </div>
       <VendorBooksView />
     </section>
+  );
+}
+
+/* Human policy: when the phone on file says "we did NOT change banks", pay the registry account or wait for a human. */
+function AfterRejected({ value }: { value?: "pay_on_file" | "hold" }) {
+  const [pending, setPending] = useState<string | null>(null);
+  const cur = pending ?? value;
+  const pick = async (v: "pay_on_file" | "hold") => { setPending(v); await api.setAfterRejected(v); setTimeout(() => setPending(null), 2000); };
+  const opt = (v: "pay_on_file" | "hold", label: string) => (
+    <button onClick={() => pick(v)} aria-pressed={cur === v}
+            className={`flex-1 px-2 py-1.5 rounded text-[13px] font-semibold ${cur === v ? "bg-raised text-text" : "text-muted hover:text-text"}`}>
+      {label}</button>
+  );
+  return (
+    <div className="mt-4">
+      <div className="text-[14px] text-muted mb-1.5">When a vendor's phone says the bank change wasn't them</div>
+      <div className="flex gap-1 rounded-md border-2 border-line p-1">
+        {opt("pay_on_file", "Pay the account on file")}{opt("hold", "Hold for me")}
+      </div>
+    </div>
   );
 }
 

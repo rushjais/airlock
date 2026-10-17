@@ -176,7 +176,10 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
         agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
         if verdict["next_action"] == "execute_payment":
             _treasurer_turn(case_id, message_id, verdict)
-        _admin_brief(case_id, change_request_id, "no")
+            _admin_brief(case_id, change_request_id, "no")
+        else:
+            db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
+            _admin_brief(case_id, change_request_id, "no_held")
     elif reply["answer"] != "yes":
         agents.post(case_id, "verifier", "result",
                     f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
@@ -232,9 +235,15 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
         if cr["held_obligation_id"] else None
     amt = f"${ob['amount_cents'] / 100:,.2f}" if ob else "the invoice"
     how = "called" if (cr["evidence"] or {}).get("channel") == "voice call" else "texted"
-    subject = (f"Airlock FYI: {possessive(cr['name'])} bank change rejected, {amt} paid to the account on file"
-               if outcome == "no" else f"Airlock needs you: {cr['name']} bank change unresolved, {amt} on hold")
-    if outcome == "no":
+    subject = {"no": f"Airlock FYI: {possessive(cr['name'])} bank change rejected, {amt} paid to the account on file",
+               "no_held": f"Airlock needs you: {possessive(cr['name'])} bank change rejected, {amt} held for your review"
+               }.get(outcome, f"Airlock needs you: {cr['name']} bank change unresolved, {amt} on hold")
+    if outcome == "no_held":
+        text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
+                f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it, "
+                f"so I rejected the change. Your policy holds the invoice after a rejected change: {amt} is waiting "
+                f"for you, and it can only pay the account on file (ending {cr['destination_last4']}).")
+    elif outcome == "no":
         text = (f"Airlock FYI (no action needed): an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it. "
                 f"I rejected the change and paid {amt} to the account on file (ending {cr['destination_last4']}).")

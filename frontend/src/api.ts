@@ -54,6 +54,7 @@ export type CardRow = { label: string; claim: string | number | null; record: st
 export type Card = { decision: string | null; reason: string | null; flags: string[]; next_action: string | null;
                      rows: CardRow[]; authorization_id?: string; case_status: string };
 export type Controls = { auto_pay_limit_cents: number; undo_window_seconds: number; approval_queue: number;
+                         after_rejected_change: "pay_on_file" | "hold";
                          standing_limits: { line_item: string; monthly_cap_cents: number; used_cents: number; vendor: string }[] };
 
 export type VendorInvoice = { number: string; po: string; amount_cents: number; status: string;
@@ -69,6 +70,9 @@ export const api = {
   summary: () => get<Summary>("/api/summary"),
   card: (id: string) => get<Card>(`/api/cases/${id}/card`),
   controls: () => get<Controls>("/api/controls"),
+  setAfterRejected: (value: "pay_on_file" | "hold") =>
+    fetch("/api/controls/after-rejected-change", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }) }).then((r) => r.ok),
   corvid: () => get<VendorBooks>("/api/vendor/corvid/books"),
   reset: () => fetch("/api/demo/reset", { method: "POST" }).then((r) => r.ok),
   forgedAuditor: () => fetch("/api/demo/forged-auditor", { method: "POST" }).then((r) => r.ok),
