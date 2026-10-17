@@ -65,6 +65,7 @@ export const api = {
   card: (id: string) => get<Card>(`/api/cases/${id}/card`),
   controls: () => get<Controls>("/api/controls"),
   reset: () => fetch("/api/demo/reset", { method: "POST" }).then((r) => r.ok),
+  vendorDispute: () => fetch("/api/demo/vendor-dispute", { method: "POST" }).then((r) => r.ok),
   replay: (scenario: string) => fetch(`/api/demo/replay/${scenario}`, { method: "POST" }).then((r) => r.ok),
 };
 

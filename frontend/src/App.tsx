@@ -119,6 +119,11 @@ function DemoButtons() {
   const [busy, setBusy] = useState<string | null>(null);
   return (
     <div className="flex items-center gap-1.5 mr-3">
+      <button disabled={busy !== null}
+        onClick={async () => { setBusy("dispute"); await api.vendorDispute(); setTimeout(() => setBusy(null), 1500); }}
+        className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-dashed border-line text-muted hover:text-text disabled:opacity-50">
+        {busy === "dispute" ? "Sending" : "Price dispute"}
+      </button>
       {SCENES.map(([id, label]) => (
         <button key={id} disabled={busy !== null}
           onClick={async () => { setBusy(id); await api.replay(id); setTimeout(() => setBusy(null), 1500); }}
@@ -148,6 +153,7 @@ const WHO: Record<string, { name: string; role: string }> = {
   verifier: { name: "Verifier", role: "contacts the phone already on file" },
   admin: { name: "Admin", role: "human reply in the thread" },
   external: { name: "Outside agent", role: "connected through Airlock's MCP server" },
+  vendor: { name: "Vendor's agent", role: "Corvid Software's billing agent, by email" },
   unverified: { name: "Unsigned message", role: "not from an Airlock agent" },
 };
 

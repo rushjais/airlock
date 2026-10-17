@@ -41,6 +41,12 @@ async def primitive_webhook(request: Request, background: BackgroundTasks):
         agents.record_echo(*internal, email["headers"].get("message_id"))
         return {"ok": True, "internal": internal[0]}
 
+    # Mail for the vendor-side demo agent (Corvid's billing agent) never enters Kiln's AP pipeline.
+    from . import vendor_agent
+    if vendor_agent.address() in rcpts:
+        background.add_task(_vendor_agent, event)
+        return {"ok": True, "routed": "vendor_agent"}
+
     msg = ingest.from_primitive(event)
     message_id, created = ingest.store(msg)
     if not created:  # retries of the same email are acknowledged but never reprocessed
@@ -55,6 +61,14 @@ async def primitive_webhook(request: Request, background: BackgroundTasks):
             log.warning("unsigned email to agent address %s from %s: treating as external claims", agent_rcpt, from_addr)
         background.add_task(_process, message_id)
     return {"ok": True, "message_id": message_id, "created": True}
+
+
+def _vendor_agent(event: dict) -> None:
+    from . import vendor_agent
+    try:
+        vendor_agent.handle(event)
+    except Exception:
+        log.exception("vendor agent failed")
 
 
 def _case_reply(case_id: str, message_id: str, from_addr: str, body: str) -> None:
@@ -291,6 +305,15 @@ def demo_replay(scenario: str, request: Request, background: BackgroundTasks, pr
     if process:
         background.add_task(_process, message_id)
     return {"ok": True, "message_id": message_id, "processed": process}
+
+
+@app.post("/api/demo/vendor-dispute")
+def demo_vendor_dispute(request: Request):
+    """Local-only: Corvid's billing agent emails an overpriced invoice to start the agent-to-agent dispute."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "only available locally")
+    from . import vendor_agent
+    return vendor_agent.kickoff()
 
 
 @app.get("/api/results")
