@@ -69,7 +69,7 @@ def post(case_id: str, author: str, kind: str, body: str, data: dict | None = No
         text = (f"{body}\n\n--\n{author.capitalize()} · Airlock agent team · [{case_id}]\n"
                 f"airlock-sig: {nonce}:{_sign(case_id, author, nonce)}")
         cc = [address(a) for a in AGENTS if a != author]
-        if config.get("DEMO_ADMIN_EMAIL"):
+        if config.get("DEMO_ADMIN_EMAIL") and (config.get("AIRLOCK_CC_ADMIN_ON_THREADS") or "") == "1":
             cc.append(config.get("DEMO_ADMIN_EMAIL"))
         payload = {"from": f"{author.capitalize()} (Airlock) <{address(author)}>", "to": address(case_id),
                    "cc": cc, "subject": case["subject"] if kind == "open" else f"Re: {case['subject']}",

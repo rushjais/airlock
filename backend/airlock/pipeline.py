@@ -198,10 +198,18 @@ def possessive(name: str) -> str:
     return name + ("'" if name.endswith("s") else "'s")
 
 
-def _text_admin(text: str) -> bool:
+def _text_admin(text: str, subject: str | None = None) -> bool:
+    """Brief the admin by text and, if configured, by email. Never asks for a reply: replies authorize nothing."""
+    email = config.get("DEMO_ADMIN_EMAIL")
+    if email:
+        try:
+            primitive.send(to=email, subject=subject or "Airlock update", body_text=text + "\n\n-- Airlock (automated). "
+                           "Replies to this email never approve anything.", from_addr=f"Airlock <{config.AGENT_INBOX}>")
+        except Exception as e:
+            log.warning("admin email failed: %s", e)
     phone = config.get("DEMO_ADMIN_PHONE")
     if not phone:
-        return False
+        return bool(email)
     try:
         from inkbox import Inkbox
         with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
@@ -224,6 +232,8 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
         if cr["held_obligation_id"] else None
     amt = f"${ob['amount_cents'] / 100:,.2f}" if ob else "the invoice"
     how = "called" if (cr["evidence"] or {}).get("channel") == "voice call" else "texted"
+    subject = (f"Airlock FYI: {possessive(cr['name'])} bank change rejected, {amt} paid to the account on file"
+               if outcome == "no" else f"Airlock needs you: {cr['name']} bank change unresolved, {amt} on hold")
     if outcome == "no":
         text = (f"Airlock FYI (no action needed): an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it. "
@@ -232,8 +242,8 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
         text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} their phone on file but couldn't get a clear answer. {amt} is on hold and "
                 f"nothing was paid. Please call {cr['name']} yourself before approving anything.")
-    if _text_admin(text):
-        agents.post(case_id, "verifier", "action", "Briefed the admin by text: " + text.split(": ", 1)[1][:220],
+    if _text_admin(text, subject):
+        agents.post(case_id, "verifier", "action", "Briefed the admin: " + text.split(": ", 1)[1][:220],
                     send_email=False)
 
 
@@ -249,8 +259,8 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
     text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
             f"{cr['new_last4']}. I checked with {cr['name']} on their phone on file and they confirmed it with the "
             f"one-time code. That's evidence, not approval. Review and approve here (replying does nothing): {link}")
-    if _text_admin(text):
-        agents.post(case_id, "verifier", "action", "Sent the admin a signed approval link on their phone.", send_email=False)
+    if _text_admin(text, f"Airlock needs you: approve or reject {possessive(cr['name'])} new bank account"):
+        agents.post(case_id, "verifier", "action", "Sent the admin a signed approval link by text and email.", send_email=False)
 
 
 def process(message_id: str) -> dict:
