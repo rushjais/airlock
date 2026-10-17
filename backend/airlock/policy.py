@@ -113,7 +113,7 @@ def propose_payment(message_id: str) -> dict:
             return _result(message_id, "deny", reason, flags, facts, "notify_admin")
         return _result(message_id, "approval_required", "unknown_vendor", flags, facts, "request_vendor_onboarding")
     v = ev.vendor
-    facts.update(vendor_id=v["id"], registry_version=v["registry_version"], destination=_dest(v))
+    facts.update(vendor_id=v["id"], vendor_name=v["name"], registry_version=v["registry_version"], destination=_dest(v))
 
     # 2. Destination: the email names a different account -> hold, open a change request.
     if "REMIT_TO_CHANGED" in flags:
@@ -227,3 +227,32 @@ def _authorize(ob: dict, vendor: dict, message_id: str, invoice_number: str | No
              ob["amount_cents"], message_id, status, f"airlock-auth-{auth_id}",
              datetime.now(timezone.utc) + AUTH_TTL))
     return auth_id
+
+
+def resolve_change_rejected(change_request_id: str, evidence: dict) -> dict:
+    """The vendor told us (via the phone on file) they did NOT change banks. The change request is rejected and
+    the held invoice pays the REGISTRY destination, so the attack fails and the vendor still gets paid."""
+    cr = db.one("select * from change_requests where id=%s", change_request_id)
+    with db.tx() as conn:
+        conn.execute("update change_requests set status='rejected', evidence = evidence || %s::jsonb where id=%s",
+                     (json.dumps(evidence), change_request_id))
+    vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
+    facts = {"change_request_id": change_request_id, "vendor_id": vendor["id"], "destination": _dest(vendor),
+             "registry_version": vendor["registry_version"], "vendor_said": evidence.get("reply")}
+    ob = db.one("select * from obligations where id=%s", cr["held_obligation_id"]) if cr["held_obligation_id"] else None
+    if ob is None:
+        return _result(cr["source_message_id"], "deny", "change_rejected_no_invoice", [], facts, "notify_admin",
+                       subject_id=change_request_id)
+    claimed = _cents(_first(claims_for(str(cr["source_message_id"])), "amount_cents"))
+    facts.update(obligation_id=ob["id"], obligation_cents=ob["amount_cents"], claimed_cents=claimed)
+    if ob["status"] != "accepted" or claimed != ob["amount_cents"]:
+        return _result(cr["source_message_id"], "hold", "change_rejected_invoice_needs_review", [], facts,
+                       "notify_admin", subject_id=ob["id"])
+    inv = _first(claims_for(str(cr["source_message_id"])), "invoice_number")
+    auth_id = _authorize(ob, vendor, str(cr["source_message_id"]), inv, "authorized")
+    if auth_id is None:
+        return _result(cr["source_message_id"], "deny", "obligation_already_reserved", [], facts,
+                       "reply_in_thread:already_paid", subject_id=ob["id"])
+    facts.update(amount_cents=ob["amount_cents"], authorization_id=auth_id)
+    return _result(cr["source_message_id"], "pay", "change_rejected_paying_registry_destination", [], facts,
+                   "execute_payment", subject_id=ob["id"], authorization_id=auth_id)

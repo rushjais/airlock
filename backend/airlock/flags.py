@@ -8,7 +8,7 @@ import statistics
 from dataclasses import dataclass, field
 
 BANK_CHANGE = re.compile(
-    r"(changed (our )?banks?|new (bank )?account|updated remittance|remittance details|moved accounts|"
+    r"(changed (our )?banks?|switched (banks?|institutions?|accounts?)|new (banking|remittance) (details|info)|direct (the|all|future|this) .{0,60}(to|into) (routing|acct|account)|new (bank )?account|updated remittance|remittance details|moved accounts|"
     r"bank (audit|change)|remit .{0,40}(to our )?new|account is being closed|update your records)", re.I)
 URGENCY = re.compile(r"\b(urgent|today|within the hour|immediately|avoid (a )?(service )?hold|asap)\b", re.I)
 DUE_NOW = re.compile(r"\b(due on receipt|due immediately|payable immediately|net 0)\b", re.I)

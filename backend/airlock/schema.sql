@@ -162,3 +162,25 @@ create table outbound_messages (               -- every email/SMS/iMessage Airlo
   body text not null,
   created_at timestamptz not null default now()
 );
+
+-- Agent coordination over Primitive email: one case thread per invoice, one address per agent.
+create table cases (
+  id text primary key,                         -- e.g. case-inv-1042-3fa2 (also the case's email local-part)
+  source_message_id uuid not null unique references messages(id),
+  vendor_id text references vendors(id),
+  subject text not null,
+  root_provider_message_id text,               -- Message-ID of Intake's opening email once it echoes back (threading)
+  status text not null default 'open',         -- open | paid | held | denied | needs_approval
+  created_at timestamptz not null default now()
+);
+
+create table case_posts (                       -- the thread, as the UI shows it (mirrors the emails)
+  id uuid primary key default gen_random_uuid(),
+  case_id text not null references cases(id),
+  author text not null,                        -- intake | auditor | treasurer | verifier | admin | vendor | unverified
+  kind text not null default 'note',           -- open | verdict | action | result | sms | admin | warning
+  body text not null,
+  data jsonb not null default '{}',
+  provider_id text,
+  created_at timestamptz not null default now()
+);

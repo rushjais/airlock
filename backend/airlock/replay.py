@@ -30,7 +30,7 @@ def parse(scenario_id: str, unique: bool = False) -> InboundEmail:
     pid = f"replay:{scenario_id}" + (f":{uuid.uuid4().hex[:8]}" if unique else "")
     return InboundEmail(
         provider_message_id=pid,
-        from_header=headers["from"][0],
+        from_header=_as_registered(headers["from"][0]),
         to=headers.get("to", [config.AGENT_INBOX])[0],
         subject=headers.get("subject", [None])[0],
         body_text=body.strip(),
@@ -38,6 +38,24 @@ def parse(scenario_id: str, unique: bool = False) -> InboundEmail:
         sender_authenticated=None,
         attachments=attachments,
     )
+
+
+def _as_registered(from_header: str) -> str:
+    """If the fixture sender is a registered vendor's fixture address, use whatever address the current seed
+    registered for that vendor (demo seeds map vendors to addresses we can really send from). Lookalikes and
+    unknown senders are left untouched."""
+    import json
+    from email.utils import parseaddr
+
+    from . import db
+    name, addr = parseaddr(from_header)
+    fixtures = json.loads((config.FIXTURES / "company.json").read_text())["vendors"]
+    for v in fixtures:
+        if addr.lower().endswith("@" + v["registered_domain"]):
+            row = db.one("select registered_email from vendors where id=%s", v["id"])
+            if row and row["registered_email"].split("@")[-1] != v["registered_domain"]:
+                return f"{name} <{row['registered_email']}>"
+    return from_header
 
 
 def replay(scenario_id: str, unique: bool = False) -> tuple[str, bool]:
