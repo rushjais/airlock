@@ -373,6 +373,13 @@ function ResultsView() {
             <p className="text-[14px] text-muted mb-6">{sub}</p>
             <p className="text-[15px] text-muted">Sent to attackers</p>
             <p className={`num font-bold text-[48px] leading-tight mb-5 ${m.cents_to_attacker ? "text-bad" : "text-ok"}`}>{usd(m.cents_to_attacker)}</p>
+            {m === r.baseline_permissive && r.trick_rate && (
+              <div className="rounded-md bg-bad-soft px-4 py-3 mb-5">
+                <p className="text-[15px] text-bad font-semibold">Repeated on the bank-redirect emails</p>
+                <p className="text-[17px]">Fooled in <span className="num font-bold text-bad">{r.trick_rate.fooled} of {r.trick_rate.attempts}</span> tries,{" "}
+                  <span className="num font-bold text-bad">{usd(r.trick_rate.cents_to_attacker)}</span> sent to attackers</p>
+              </div>
+            )}
             <dl className="space-y-2.5 text-[17px]">
               <div className="flex justify-between gap-4"><dt>Payments that shouldn't have happened</dt>
                 <dd className={`num font-bold ${m.unauthorized_payments ? "text-bad" : ""}`}>{m.unauthorized_payments}</dd></div>

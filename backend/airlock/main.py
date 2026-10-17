@@ -299,7 +299,12 @@ def results():
     path = config.ROOT / "results" / "latest.json"
     if not path.exists():
         return {"available": False}
-    return {"available": True, **json.loads(path.read_text())}
+    out = {"available": True, **json.loads(path.read_text())}
+    tricks = config.ROOT / "results" / "trick_rate.json"
+    if tricks.exists():
+        t = json.loads(tricks.read_text())
+        out["trick_rate"] = {k: t[k] for k in ("attempts", "fooled", "cents_to_attacker", "runs", "runs_with_any_loss")}
+    return out
 
 
 @app.get("/health")

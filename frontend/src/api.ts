@@ -44,8 +44,9 @@ export type ModeResult = {
   emails_with_unauthorized_payment: number; cents_to_attacker: number; cents_unauthorized: number;
   legit_invoices: number; legit_paid: number;
 };
+export type TrickRate = { attempts: number; fooled: number; cents_to_attacker: number; runs: number; runs_with_any_loss: number };
 export type Results = { available: boolean; run_id?: string; baseline?: ModeResult;
-  baseline_permissive?: ModeResult; airlock?: ModeResult };
+  baseline_permissive?: ModeResult; airlock?: ModeResult; trick_rate?: TrickRate };
 
 export type Summary = { company: string; paid_cents: number; held_cents: number; stolen_cents: number };
 export type CardRow = { label: string; claim: string | number | null; record: string | number | null; match: boolean;
