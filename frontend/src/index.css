@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-steel: #eef1f4;
+  --color-panel: #f8fafb;
+  --color-ink: #14213d;
+  --color-muted: #5b6577;
+  --color-rule: #d5dbe3;
+  --color-trusted: #1f7a5c;
+  --color-trusted-soft: #e3f1ec;
+  --color-untrusted: #c98a0b;
+  --color-untrusted-soft: #fbf1db;
+  --color-denied: #b3261e;
+  --color-denied-soft: #f8e4e2;
+  --color-code: #3d4756;
+
+  --font-ui: "Archivo", system-ui, sans-serif;
+  --font-letter: "Newsreader", Georgia, serif;
+  --font-code: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-steel);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-variation-settings: "wdth" 100;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+.wide { font-variation-settings: "wdth" 118; }
+.condensed { font-variation-settings: "wdth" 78; }
+
+/* The one orchestrated motion: a post entering the chamber. */
+@keyframes enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.post-enter { animation: enter 420ms cubic-bezier(.2,.7,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .post-enter { animation: none; }
+}
+
+:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 2px; }
