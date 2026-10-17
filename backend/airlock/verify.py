@@ -74,9 +74,11 @@ def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
         f"1. Say: \"Hi, this is the automated accounts-payable assistant for Kiln Supply Company. We received an email "
         f"that appears to be from {vendor['name']}, asking us to send the payment for {what} to a new bank account "
         f"ending in {new_digits or 'a new number'}. Did {vendor['name']} request this change? Please answer yes or no.\"\n"
-        "2. Wait for their answer. If it is not a clear yes or no, ask once more: \"Just to confirm, did your company "
-        "request a change to your bank account, yes or no?\"\n"
-        "3. Then say: \"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
+        "2. Stop talking and wait at least 5 seconds for their answer. You MUST hear a spoken yes or no before step 3. "
+        "If you hear nothing or it isn't clear, ask: \"Sorry, I didn't catch that. Did your company request a change "
+        "to your bank account, yes or no?\" You may ask up to two times.\n"
+        "3. Only after you have heard their answer (or asked twice with no answer), repeat back what you heard, say: "
+        "\"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
         "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         call = _identity(ib).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
