@@ -74,7 +74,7 @@ def propose(ref: MessageRef):
         raise HTTPException(404, "unknown message")
     existing = _latest(ref.message_id)
     if existing:  # already decided (e.g. by the webhook pipeline): return the same verdict, don't double-reserve
-        return _verdict(existing)
+        return _verdict(policy.reauthorize_failed(ref.message_id, existing) or existing)
     if not db.one("select 1 from claims where message_id=%s", ref.message_id):
         try:
             reader.read(ref.message_id)

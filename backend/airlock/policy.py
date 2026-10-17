@@ -231,6 +231,29 @@ def _authorize(ob: dict, vendor: dict, message_id: str, invoice_number: str | No
     return auth_id
 
 
+def reauthorize_failed(message_id: str, prior: dict) -> dict | None:
+    """A 'pay' verdict whose authorization Stripe definitively rejected (status 'failed', obligation released back
+    to 'accepted') gets a fresh authorization for the same obligation, vendor and amount. Anything else (unknown,
+    invalidated, expired, or a registry change since) returns None and the prior verdict stands."""
+    facts = prior.get("facts") or {}
+    if prior["decision"] != "pay" or not facts.get("authorization_id"):
+        return None
+    a = db.one("select * from payment_authorizations where id=%s", facts["authorization_id"])
+    if a is None or a["status"] != "failed":
+        return None
+    vendor = db.one("select * from vendors where id=%s", a["vendor_id"])
+    if vendor["registry_version"] != a["registry_version"]:
+        return None
+    ob = db.one("select * from obligations where id=%s", a["obligation_id"])
+    auth_id = _authorize(ob, vendor, message_id, facts.get("invoice_number"), "authorized")
+    if auth_id is None:
+        return None
+    facts = {**facts, "authorization_id": auth_id, "replaces_authorization_id": str(a["id"]),
+             "destination": _dest(vendor), "amount_cents": ob["amount_cents"]}
+    return _result(message_id, "pay", prior["reason"], prior["flags"], facts, "execute_payment",
+                   subject_id=ob["id"], authorization_id=auth_id)
+
+
 def resolve_change_rejected(change_request_id: str, evidence: dict) -> dict:
     """The vendor told us (via the phone on file) they did NOT change banks. The change request is rejected and
     the held invoice pays the REGISTRY destination, so the attack fails and the vendor still gets paid."""

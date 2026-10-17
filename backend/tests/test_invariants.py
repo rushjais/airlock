@@ -122,3 +122,39 @@ def test_undo_window_blocks_execution_until_release(monkeypatch):
            datetime.now(timezone.utc) + timedelta(minutes=5), d["authorization_id"])
     assert executor.execute(d["authorization_id"])["reason"] == "in_undo_window"
     assert fake.calls == []
+
+
+def test_stripe_rejection_gets_fresh_authorization_on_repropose(monkeypatch):
+    from airlock import agent_api
+    fake = FakeStripe(monkeypatch, raise_exc=stripe.InvalidRequestError("insufficient available funds", None))
+    mid = message_01()
+    first = agent_api.propose(agent_api.MessageRef(message_id=mid))
+    old = first["facts"]["authorization_id"]
+    assert executor.execute(old)["reason"] == "stripe_rejected"
+    assert db.one("select status from payment_authorizations where id=%s", old)["status"] == "failed"
+
+    # Re-proposing replaces the failed authorization instead of replaying it; same obligation, amount, destination.
+    again = agent_api.propose(agent_api.MessageRef(message_id=mid))
+    assert again["decision"] == "pay" and again["next_action"] == "execute_payment"
+    new = again["facts"]["authorization_id"]
+    assert new != old
+    assert executor.execute(old)["ok"] is False, "the failed authorization stays dead"
+    assert executor.execute(new)["ok"]
+    assert [c["amount"] for c in fake.calls] == [145000, 145000]
+    assert len({c["idempotency_key"] for c in fake.calls}) == 2
+    assert db.one("select status from obligations where id='ob_118'")["status"] == "settled"
+
+    # Once settled, re-proposing replays the verdict and creates nothing new.
+    agent_api.propose(agent_api.MessageRef(message_id=mid))
+    assert db.one("select count(*) n from payment_authorizations where obligation_id='ob_118'")["n"] == 2
+
+
+def test_unknown_outcome_is_never_reauthorized(monkeypatch):
+    from airlock import agent_api
+    FakeStripe(monkeypatch, raise_exc=stripe.APIConnectionError("timeout"))
+    mid = message_01()
+    d = agent_api.propose(agent_api.MessageRef(message_id=mid))
+    assert executor.execute(d["facts"]["authorization_id"])["reason"] == "unknown_outcome"
+    again = agent_api.propose(agent_api.MessageRef(message_id=mid))
+    assert again["facts"]["authorization_id"] == d["facts"]["authorization_id"]
+    assert db.one("select count(*) n from payment_authorizations where obligation_id='ob_118'")["n"] == 1
