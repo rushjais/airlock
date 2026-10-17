@@ -108,11 +108,12 @@ def compute(e: Evidence) -> list[str]:
     if BANK_CHANGE.search(email_text):
         f.append("BANK_CHANGE_LANGUAGE")
 
-    # Text inside an attachment aimed at an automated payer.
-    reader_saw = any("EXTERNAL_ATTACHMENT" in c["labels"] for c in e.claims.get("instructions_to_reader", []))
-    if AGENT_DIRECTED.search(e.attachment_text) or reader_saw:
+    # Text inside an attachment aimed at an automated payer. Deterministic only: the reader's own list of
+    # "instructions" is shown to humans but never escalates (it varies run to run and once flagged
+    # "Remit to the account on file" on a genuine invoice).
+    if AGENT_DIRECTED.search(e.attachment_text):
         f.append("EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT")
-    if DATA_ASK.search(email_text) or any("EXTERNAL_EMAIL" in c["labels"] for c in e.claims.get("data_requests", [])):
+    if DATA_ASK.search(email_text):
         f.append("DATA_REQUEST")
 
     if e.contract is not None:

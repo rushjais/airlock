@@ -184,3 +184,21 @@ create table case_posts (                       -- the thread, as the UI shows i
   provider_id text,
   created_at timestamptz not null default now()
 );
+
+-- Before/after measurement. 'baseline' rows come from the deliberately unsafe comparison agent (backend/baseline.py),
+-- which is NOT part of Airlock and is the only other code that can call Stripe.
+create table eval_results (
+  id bigserial primary key,
+  run_id text not null,
+  mode text not null check (mode in ('baseline','baseline_permissive','airlock')),
+  scenario text not null,
+  should_pay boolean not null,
+  expected_cents int,
+  paid boolean not null,
+  paid_cents int,
+  paid_to text,                    -- vendor id, or 'attacker' for any account not in the registry
+  stripe_transfer_id text,
+  unauthorized boolean not null,
+  note text,
+  created_at timestamptz not null default now()
+);
