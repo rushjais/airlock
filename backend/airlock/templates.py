@@ -21,6 +21,9 @@ TEMPLATES = {
         "Hi {vendor},\n\nInvoice {invoice} is for {claimed}, but the approved amount for {po} is {expected}. "
         "Could you explain the difference or reply with a corrected invoice attached? We'll pay as soon as it "
         "matches.\n\nKiln Supply Co. Accounts Payable (Airlock)"),
+    "ask_vendor_to_resend": (
+        "Hi {vendor},\n\nYour email is about {invoice}, but the attached invoice is from {issuer}, not {vendor}. "
+        "Nothing has been paid. Please reply with your own invoice attached.\n\nKiln Supply Co. Accounts Payable (Airlock)"),
     "verification_pending": (
         "Hi {vendor},\n\nWe received a request to change where we send your payments. For your protection we "
         "never change payment details based on an email. We'll confirm through the phone number we already have "

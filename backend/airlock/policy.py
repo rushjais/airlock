@@ -79,6 +79,7 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
             vid)} if vid else set(),
         claimed_cents=_cents(_first(claims, "amount_cents")),
         invoice_number=_first(claims, "invoice_number"),
+        other_vendors=[x for x in vendors if x["id"] != vid],
     )
     return msg, ev
 
@@ -116,6 +117,14 @@ def propose_payment(message_id: str) -> dict:
         return _result(message_id, "approval_required", "unknown_vendor", flags, facts, "request_vendor_onboarding")
     v = ev.vendor
     facts.update(vendor_id=v["id"], vendor_name=v["name"], registry_version=v["registry_version"], destination=_dest(v))
+
+    # 1b. Identity consistency: the attached invoice is another vendor's document. Nothing else is evaluated
+    # (no bank-change check, no phone call) until the sender sends an invoice that is actually theirs.
+    other = F.issuer_mismatch(ev)
+    if other is not None:
+        facts["document_issuer"] = other["name"]
+        return _result(message_id, "hold", "document_from_different_vendor", flags, facts,
+                       "reply_in_thread:ask_vendor_to_resend")
 
     # 2. Destination: the email names a different account -> hold, open a change request.
     if "REMIT_TO_CHANGED" in flags:

@@ -260,6 +260,7 @@ const VERDICT: Record<string, { word: string; cls: string }> = {
 
 // Plain-English gloss for each policy rule (the slug stays visible: it's what the code checked).
 const WHY: Record<string, string> = {
+  document_from_different_vendor: "The attached invoice belongs to a different company than the sender. Asked them to send their own.",
   matched_accepted_obligation: "Sender, amount and PO match an approved, received order. Paid to the account on file.",
   amount_mismatch: "The amount doesn't match what was approved for this PO. Asked the vendor to explain or reissue.",
   destination_change_requested: "The email asks to pay a different account. Checking with the vendor's phone on file.",

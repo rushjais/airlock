@@ -41,6 +41,7 @@ class Evidence:
     settled_invoices: set[str]
     claimed_cents: int | None
     invoice_number: str | None
+    other_vendors: list[dict] = field(default_factory=list)  # registry rows for every vendor except the routed one
     flags: list[str] = field(default_factory=list)
 
 
@@ -84,6 +85,22 @@ def _line_ok(line: str, allowed: list[str]) -> bool:
     return any(set(re.findall(r"[a-z]+", a.lower())) - GENERIC_TOKENS <= words for a in allowed)
 
 
+def _names(v: dict) -> list[str]:
+    base = v["registered_domain"].split(".")[0]
+    return [v["name"].lower(), v["registered_domain"].lower()] + ([base.lower()] if len(base) >= 5 else [])
+
+
+def issuer_mismatch(e: Evidence) -> dict | None:
+    """The attachment is another registered vendor's document (it names them and not the sender's vendor):
+    the email and its invoice don't agree on who is billing. Deterministic, from the registry."""
+    if e.vendor is None or not e.attachment_text.strip():
+        return None
+    head = e.attachment_text.lower()
+    if any(n in head for n in _names(e.vendor)):
+        return None
+    return next((v for v in e.other_vendors if any(n in head for n in _names(v))), None)
+
+
 def compute(e: Evidence) -> list[str]:
     f: list[str] = []
     email_text = f"{e.subject}\n{e.body}"
@@ -93,6 +110,9 @@ def compute(e: Evidence) -> list[str]:
         f.append("NEW_VENDOR")
     if e.lookalike_of is not None:
         f.append(f"LOOKALIKE_DOMAIN:{e.from_domain}~{e.lookalike_of['registered_domain']}")
+    other = issuer_mismatch(e)
+    if other is not None:
+        f.append(f"ISSUER_MISMATCH:{other['name']}")
     if e.reply_to and e.reply_to.split("@")[-1].lower() != e.from_domain:
         f.append("REPLY_TO_MISMATCH")
     if URGENCY.search(email_text):

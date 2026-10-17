@@ -34,7 +34,7 @@ TOOLS = [
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["template"],
                       "properties": {"template": {"type": "string",
                                                   "enum": ["already_paid", "ask_vendor_to_explain_or_reissue",
-                                                           "verification_pending"]}}}},
+                                                           "ask_vendor_to_resend", "verification_pending"]}}}},
     {"name": "escalate_to_admin", "strict": True,
      "description": "Flag the case for a human admin with a short reason.",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["reason"],

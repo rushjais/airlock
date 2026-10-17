@@ -60,6 +60,9 @@ def _intake_text(message_id: str, facts: dict) -> str:
 
 
 AUDITOR_REASONS = {
+    "document_from_different_vendor": "the email says it's from {vendor_name}, but the attached invoice is "
+                                      "{document_issuer}'s document. Nothing else is checked until the sender sends "
+                                      "their own invoice",
     "matched_accepted_obligation": "matches approved {po} for {obligation} and the vendor's account on file",
     "destination_change_requested": "the email asks to pay a different account than the one on file. Holding: "
                                     "a bank change is only accepted after the vendor confirms on the phone already on file",
@@ -80,7 +83,8 @@ def _auditor_text(verdict: dict) -> str:
     tmpl = AUDITOR_REASONS.get(reason) or (f"standing limit covers it ({f.get('standing_limit')})"
                                           if reason.startswith("within_standing_limit") else reason.replace("_", " "))
     detail = tmpl.format(po=f.get("po_number") or "the PO", obligation=_usd(f.get("obligation_cents")),
-                         claimed=_usd(f.get("claimed_cents")), imitates=f.get("imitates", "a vendor"))
+                         claimed=_usd(f.get("claimed_cents")), imitates=f.get("imitates", "a vendor"),
+                         vendor_name=f.get("vendor_name", "the vendor"), document_issuer=f.get("document_issuer", "another company"))
     head = {"pay": "APPROVED", "hold": "HOLD", "deny": "DENIED", "approval_required": "NEEDS APPROVAL",
             "pending_approval": "NEEDS APPROVAL"}[verdict["decision"]]
     out = f"{head}: {detail}."
@@ -121,7 +125,7 @@ def _handlers(case_id: str, message_id: str, verdict: dict) -> dict:
 
     def do_reply(template: str) -> dict:
         return _reply(message_id, template, claimed=facts.get("claimed_cents"), expected=facts.get("obligation_cents"),
-                      **common)
+                      issuer=facts.get("document_issuer") or "another company", **common)
 
     def do_escalate(reason: str) -> dict:
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)

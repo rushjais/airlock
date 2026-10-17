@@ -158,3 +158,21 @@ def test_unknown_outcome_is_never_reauthorized(monkeypatch):
     again = agent_api.propose(agent_api.MessageRef(message_id=mid))
     assert again["facts"]["authorization_id"] == d["facts"]["authorization_id"]
     assert db.one("select count(*) n from payment_authorizations where obligation_id='ob_118'")["n"] == 1
+
+
+def test_attachment_from_another_vendor_holds_before_anything_else():
+    """Email routed to Acme, but the attached invoice is Corvid's (with a foreign account): hold for identity,
+    no change request, no phone check."""
+    from airlock.ingest import Attachment, InboundEmail, store
+    msg = InboundEmail(provider_message_id=f"t:{uuid.uuid4().hex[:8]}", from_header="Acme Metals <billing@acmemetals.com>",
+                       to="ap@kiln", subject="Invoice INV-1042", body_text="Attached is INV-1042 for $1,450.00, PO-118.")
+    msg.attachments = [Attachment("inv.txt", "text/plain",
+                                  b"Corvid Software\nINVOICE INV-C-0931\nTotal due $449.00\nRemit to account 5510-3381")]
+    mid, _ = store(msg)
+    add_claims(mid, {"vendor_name": "Acme Metals", "invoice_number": "INV-1042", "po_number": "PO-118",
+                     "amount_cents": "145000"})
+    d = policy.propose_payment(mid)
+    assert d["decision"] == "hold" and d["reason"] == "document_from_different_vendor"
+    assert d["facts"]["document_issuer"] == "Corvid Software"
+    assert not d.get("authorization_id")
+    assert db.one("select count(*) n from change_requests where source_message_id=%s", mid)["n"] == 0
