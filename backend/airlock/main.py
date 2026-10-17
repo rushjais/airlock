@@ -241,8 +241,9 @@ def demo_reset(request: Request):
     X-Forwarded-For and are refused."""
     if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
         raise HTTPException(403, "reset is only available locally")
-    from . import seed
+    from . import seed, vendor_agent
     seed.main(reset=True)
+    vendor_agent.reset_books()
     return {"ok": True}
 
 
@@ -344,6 +345,13 @@ def demo_vendor_dispute(request: Request):
         raise HTTPException(403, "only available locally")
     from . import vendor_agent
     return vendor_agent.kickoff()
+
+
+@app.get("/api/vendor/corvid/books")
+def corvid_books():
+    """Corvid's own ledger (a separate company's state, shown side by side for the demo)."""
+    from . import vendor_agent
+    return vendor_agent.books()
 
 
 @app.post("/api/demo/forged-auditor")

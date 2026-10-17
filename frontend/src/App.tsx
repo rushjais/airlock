@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   api, usd, type Card, type CaseDetail, type CaseRow, type Controls, type ModeResult, type Money, type Post,
-  type Results, type Summary,
+  type Results, type Summary, type VendorBooks,
 } from "./api";
 
 const POLL_MS = 1500;
@@ -357,7 +357,35 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
           </div>
         ))}
       </div>
+      <VendorBooksView />
     </section>
+  );
+}
+
+/* Corvid is a separate company with its own ledger; this is its view of the same money. */
+function VendorBooksView() {
+  const b = usePoll<VendorBooks>(api.corvid);
+  const inv = b?.invoices ?? [];
+  if (inv.length === 0) return null;
+  const tone: Record<string, string> = { paid: "text-ok", void: "text-muted line-through", sent: "text-held" };
+  const latest = (b?.events ?? []).find((e) => !e.event.startsWith("handled") && !e.event.startsWith("replied"));
+  return (
+    <div className="border-t-2 border-line pt-5">
+      <h2 className="text-[19px] font-bold">Corvid's books</h2>
+      <p className="text-[13px] text-muted mb-3">The vendor's own agent and ledger. Separate company, separate database.</p>
+      <ol className="space-y-2">
+        {inv.map((i) => (
+          <li key={i.number} className={`flex items-baseline justify-between gap-3 ${isFresh(i.updated_at) ? "fresh" : ""}`}>
+            <div className="min-w-0">
+              <div className={`num text-[15px] font-semibold ${tone[i.status] ?? ""}`}>{i.number}</div>
+              <div className="text-[12px] text-muted truncate">{i.status === "paid" ? `paid · ${i.transfer_id ?? ""}` : i.status === "void" ? i.note : "awaiting payment"}</div>
+            </div>
+            <div className={`num text-[16px] font-bold ${tone[i.status] ?? ""}`}>{usd(i.amount_cents)}</div>
+          </li>
+        ))}
+      </ol>
+      {latest && <p className="text-[13px] text-muted mt-3">Latest: {latest.event}</p>}
+    </div>
   );
 }
 

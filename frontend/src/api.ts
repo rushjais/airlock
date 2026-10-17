@@ -56,6 +56,11 @@ export type Card = { decision: string | null; reason: string | null; flags: stri
 export type Controls = { auto_pay_limit_cents: number; undo_window_seconds: number; approval_queue: number;
                          standing_limits: { line_item: string; monthly_cap_cents: number; used_cents: number; vendor: string }[] };
 
+export type VendorInvoice = { number: string; po: string; amount_cents: number; status: string;
+                              transfer_id: string | null; note: string | null; updated_at: string };
+export type VendorBooks = { company: string; address: string; invoices: VendorInvoice[];
+                            events: { at: string; invoice: string; event: string }[] };
+
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
   case: (id: string) => get<CaseDetail>(`/api/cases/${id}`),
@@ -64,6 +69,7 @@ export const api = {
   summary: () => get<Summary>("/api/summary"),
   card: (id: string) => get<Card>(`/api/cases/${id}/card`),
   controls: () => get<Controls>("/api/controls"),
+  corvid: () => get<VendorBooks>("/api/vendor/corvid/books"),
   reset: () => fetch("/api/demo/reset", { method: "POST" }).then((r) => r.ok),
   forgedAuditor: () => fetch("/api/demo/forged-auditor", { method: "POST" }).then((r) => r.ok),
   vendorDispute: () => fetch("/api/demo/vendor-dispute", { method: "POST" }).then((r) => r.ok),

@@ -66,3 +66,6 @@ mcp/.mcp-use/
 
 # service pids/logs
 .run/
+
+# Corvid (demo vendor) keeps its own books, separate from Airlock
+backend/.vendor_state/
