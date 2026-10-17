@@ -25,6 +25,7 @@ Hacking 10:30am Sat Oct 17 → submissions + live demos 10:00am Sun Oct 18.
   `treasurer@` "from Auditor" does nothing, because Treasurer's only payment tool takes an Airlock authorization id
   (demo this once). Inbound mail from our own agent addresses counts as internal only if it matches a message id
   we sent; anything else claiming to be an agent is treated as external.
+- **Inkbox number provisioned 12:30pm Sat: +1 209 963 1167, SMS ready.** Recipients text START once (US opt-in).
 - **Inkbox = the phone channel only:** Verifier texts (or calls) the vendor's phone on file; admin alerts go by
   iMessage. Ask Alex to enable a real number for SMS. Submission tracks: Primitive + Inkbox if verification is
   impressive, otherwise Primitive + Stripe.
