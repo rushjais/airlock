@@ -322,6 +322,8 @@ def approval_reconfirm(cr_id: str, body: AuthBody):
 def _start_workers():
     approvals.start_release_worker()
     _resume_vendor_listeners()
+    from . import ask
+    ask.start()
 
 
 def _resume_vendor_listeners() -> None:

@@ -206,3 +206,6 @@ create table eval_results (
   note text,
   created_at timestamptz not null default now()
 );
+
+-- texts from the admin to Airlock and its answers (read-only Q&A; never authorization)
+create table admin_questions (id text primary key, asked_at timestamptz default now(), question text, answer text);
