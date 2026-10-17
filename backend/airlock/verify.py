@@ -33,6 +33,14 @@ def send_code(change_request_id: str) -> dict:
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
     if cr["status"] != "pending_verification":
         return {"ok": False, "reason": f"change_request_{cr['status']}"}
+    # One contact per change request, claimed atomically: a repeated tool call can't text the vendor twice
+    # (a second text would also replace the first code).
+    claimed = db.one("""update change_requests set evidence = evidence || jsonb_build_object('contact_claimed_at', now())
+                        where id=%s and not (evidence ? 'contact_claimed_at') returning id""", change_request_id)
+    if not claimed:
+        ev = cr["evidence"] or {}
+        return {"ok": False, "reason": "verification_already_sent", "channel": ev.get("channel"),
+                "phone_on_file_last4": (ev.get("phone_on_file") or "")[-4:]}
     code = f"{secrets.randbelow(10**6):06d}"
     possessive = vendor["name"] + ("'" if vendor["name"].endswith("s") else "'s")
     new = cr["new_destination"].replace("account(s) ending", "an account ending")

@@ -8,6 +8,37 @@ only against an obligation the company already approved and received, and resolv
 (a bank change, a one-off charge, a new vendor) by asking the right person through a channel the
 email didn't provide.
 
+## How it works
+```
+vendor email ──► ap@ (Primitive) ──► Intake ──► tool-less reader (Claude) ──► labeled claims
+                                                                               │
+              vendor registry · obligations · contracts · history ──► Auditor (policy code, no model)
+                                                                               │
+                 pay ◄── Treasurer (Claude, sees only the verdict) ◄── decision + next_action
+                  │
+                  └──► executor (separate process, only holder of the Stripe key; input = authorization_id)
+```
+- **Agent team over email.** `intake@`, `auditor@`, `treasurer@`, `verifier@` each have their own Primitive address and
+  post HMAC-signed messages into a per-case thread (`case-…@`). Mail claiming to be an agent without a valid signature
+  is treated as an outside claim.
+- **Out-of-band checks.** A bank change triggers a text or Voice AI call (Inkbox) to the phone **already on file**,
+  never one from the email. "No" rejects the change and pays the account on file (or holds it, per a spending
+  control). "Yes" is evidence only: an admin still approves on a signed page, followed by an undo window.
+- **Agents as customers.** Any agent can use Airlock through MCP (`list_inbox`, `read_message`, `propose_payment`,
+  `execute_payment`, …). No tool accepts a destination or an amount. Every non-pay answer includes a `next_action`.
+- **Agent-to-agent.** Corvid Software runs its own billing agent with its own books. When Airlock holds its overpriced
+  invoice, Corvid reissues it, and after Airlock pays, Corvid reconciles the receipt on its side.
+
+## Run it
+```bash
+cp .env.example .env            # Stripe test key, Primitive, Inkbox, Anthropic, Supabase DATABASE_URL
+cd backend && uv sync && uv run python -m airlock.seed --reset && cd ..
+cd frontend && npm install && cd ..
+scripts/up.sh                   # executor :8001, API :8000, UI :5173, ngrok tunnel for the Primitive webhook
+open "http://localhost:5173/?demo"
+cd backend && uv run pytest     # invariant tests (uses a separate schema)
+```
+
 ## Threat model
 **Attackers control:** inbound email and attachments, including a compromised real vendor mailbox,
 lookalike domains, display names, Reply-To headers, hidden text in PDFs, and anything the model reads.

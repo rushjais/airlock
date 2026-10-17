@@ -222,6 +222,9 @@ function PostView({ post, caseId }: { post: Post; caseId: string }) {
   const edge = verdict === "APPROVED" ? "border-ok" : verdict === "DENIED" ? "border-bad" : verdict ? "border-held"
              : post.author === "unverified" ? "border-bad" : "border-line";
   const cc = AGENTS.filter((a) => a !== post.author).map((a) => `${a}@`).join(", ");
+  const [open, setOpen] = useState(false);
+  const long = !isCode && post.body.length > 360;
+  const short = post.body.slice(0, post.body.lastIndexOf(" ", 260) > 0 ? post.body.lastIndexOf(" ", 260) : 260) + "…";
   return (
     <li className={`border-l-4 ${edge} pl-4 pr-2 py-1 ${isFresh(post.created_at) ? "fresh" : ""}`}>
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
@@ -236,7 +239,11 @@ function PostView({ post, caseId }: { post: Post; caseId: string }) {
       )}
       {isCode
         ? <pre className="font-code text-[14.5px] leading-[1.55] whitespace-pre-wrap text-code">{post.body}</pre>
-        : <p className="font-letter text-[18px] leading-[1.5] whitespace-pre-wrap">{post.body}</p>}
+        : <p className="font-letter text-[18px] leading-[1.5] whitespace-pre-wrap">{long && !open ? short : post.body}</p>}
+      {long && (
+        <button onClick={() => setOpen(!open)} className="text-[13px] text-muted hover:text-text mt-1 underline underline-offset-2">
+          {open ? "Show less" : "Show all"}</button>
+      )}
     </li>
   );
 }

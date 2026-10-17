@@ -111,3 +111,25 @@ def test_rejected_change_holds_when_policy_says_hold():
     assert d["decision"] == "hold" and d["reason"] == "change_rejected_held_by_policy"
     assert not d.get("authorization_id")
     assert db.one("select status from change_requests where id=%s", cr)["status"] == "rejected"
+
+
+def test_vendor_is_contacted_once_per_change_request(monkeypatch):
+    from airlock import verify
+    sent = []
+
+    class FakeIdent:
+        def send_text(self, to, text): sent.append((to, text))
+
+    class FakeInkbox:
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(verify, "Inkbox", FakeInkbox)
+    monkeypatch.setattr(verify, "_identity", lambda ib: FakeIdent())
+    monkeypatch.setenv("AIRLOCK_VERIFY_CHANNEL", "text")
+    cr = _held_change()
+    assert verify.send_code(cr)["ok"]
+    again = verify.send_code(cr)
+    assert not again["ok"] and again["reason"] == "verification_already_sent"
+    assert len(sent) == 1
