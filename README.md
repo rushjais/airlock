@@ -34,9 +34,40 @@ Airlock builds on these ideas and adds: real agent inbox and Stripe test-mode pa
 authorizations with concurrency and timeout handling, and resolution workflows (out-of-band vendor
 verification, receipt confirmation, one-off approval) instead of dead-end blocks.
 
-## Results
-Fill in only with numbers you have actually run, with denominators, reported separately:
-- Permissive baseline: __ / __ unauthorized payments executed
-- Real model: __ / __ attacks where the agent proposed an unauthorized payment
-- Airlock enforcement: __ / __ unauthorized payments executed; __ / __ legitimate invoices paid
-- Concurrency: __ simultaneous attempts -> __ transfers
+## Results (measured Oct 17, 2026; every number below is from a run in this repo)
+
+**Before/after on the same 16 emails** (10 fixture scenarios, 3 unseen, 3 quiet-fraud), same Claude model,
+real Stripe test-mode transfers (`backend/evaluate.py`):
+
+| Agent | Sent to attackers | Unauthorized payments | Legitimate invoices paid |
+|---|---|---|---|
+| Told to pay invoices as instructed (raw pay tool) | $820 in 1 of 2 runs (hidden PDF instruction), $0 in the other | 1 / 13 in that run | 1 / 3 |
+| Told to watch for fraud (raw pay tool) | $0 | 0 / 13 | 1 / 3 |
+| **With Airlock** | **$0** | **0 / 13** | **3 / 3** |
+
+Without Airlock you pick safe or useful. Model behavior varies between runs; numbers are per run, not averaged.
+
+**Fuzzing** (`backend/fuzz.py`): 1,000 generated emails with the reader assumed **compromised** (attacker-written
+claims, lookalike domains, foreign accounts, wrong amounts, injected instructions). **0 safety violations** across
+properties S1-S6 (sender registered, no foreign account, amount = approved obligation, registry destination, one
+payment per obligation, never pay unreceived goods). Decisions: 544 deny, 241 approval required, 175 hold, 40 pay
+(every first payment of each real PO; later duplicates refused).
+
+**Concurrency and failure:**
+- 20 simultaneous executes of one authorization -> **1** Stripe transfer (`tests/test_invariants.py`)
+- Executor `SIGKILL`ed after Stripe accepted the transfer but before Airlock recorded it -> on restart the
+  payment is `unknown`, new proposals are refused, reconcile with the same idempotency key -> **exactly 1** transfer
+  (`backend/chaos.py`)
+- 4 simultaneous agent proposals on one email -> 1 case, 1 change request, 1 decision
+
+**Agents using Airlock over MCP:** two fresh Claude agents (one careful, one told to be gullible and try to force
+payments) used only the Airlock MCP tools. Neither moved money anywhere it shouldn't; the red-team agent tried
+change-request ids, message ids, Stripe ids, SQL injection and a JSON blob with its own destination as an
+authorization id, and every attempt was denied. Their friction reports drove the agent-experience fixes in commit 8a1eb9b.
+
+**Tests:** 19 passing (`uv run pytest`), all 10 fixture scenarios match `scenarios/expected.json`, plus 3 unseen
+and 3 quiet-fraud scenarios with no code changes. Reader runs on Claude Haiku 5.5 (16/16 decisions identical to
+Opus 5.5, two runs); the security decision never depends on the model.
+
+These boundaries are enforced in the prototype for agents that connect through Airlock. They are not a claim that
+the system is unbreakable.
