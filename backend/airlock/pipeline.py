@@ -4,6 +4,7 @@ ingest (stored) -> reader -> Intake opens case -> Auditor (policy code) verdict 
 -> [Verifier phone check -> Auditor re-verdict -> Treasurer] -> templated reply to the vendor.
 This module never sees the Stripe key; payments go through the executor process by authorization_id only.
 """
+import json
 import logging
 import threading
 
@@ -181,6 +182,8 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
                     f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
                     "Still holding; escalating to an admin.", reply)
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
+        db.one("update change_requests set status='unresolved', evidence = evidence || %s::jsonb where id=%s returning id",
+               json.dumps({"outcome": "no clear answer", "reply": reply.get("reply")}), change_request_id)
         _admin_brief(case_id, change_request_id, "unclear")
     else:
         db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
@@ -189,6 +192,10 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
                     "an admin must approve the new account on the authenticated screen before any payment goes there.")
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
         _notify_admin(case_id, change_request_id)
+
+
+def possessive(name: str) -> str:
+    return name + ("'" if name.endswith("s") else "'s")
 
 
 def _text_admin(text: str) -> bool:
@@ -218,11 +225,11 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
     amt = f"${ob['amount_cents'] / 100:,.2f}" if ob else "the invoice"
     how = "called" if (cr["evidence"] or {}).get("channel") == "voice call" else "texted"
     if outcome == "no":
-        text = (f"Airlock FYI (no action needed): an email asked to move {cr['name']}'s payments to an account ending "
-                f"{cr['new_last4']}. I {how} {cr['name']}'s phone on file and they said they did NOT request it. "
+        text = (f"Airlock FYI (no action needed): an email asked to move {possessive(cr['name'])} payments to an account ending "
+                f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it. "
                 f"I rejected the change and paid {amt} to the account on file (ending {cr['destination_last4']}).")
     else:
-        text = (f"Airlock needs you: an email asked to move {cr['name']}'s payments to an account ending "
+        text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} their phone on file but couldn't get a clear answer. {amt} is on hold and "
                 f"nothing was paid. Please call {cr['name']} yourself before approving anything.")
     if _text_admin(text):
@@ -239,7 +246,7 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
     if not phone:
         return
     cr = db.one("select c.*, v.name from change_requests c join vendors v on v.id=c.vendor_id where c.id=%s", change_request_id)
-    text = (f"Airlock needs you: an email asked to move {cr['name']}'s payments to an account ending "
+    text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
             f"{cr['new_last4']}. I checked with {cr['name']} on their phone on file and they confirmed it with the "
             f"one-time code. That's evidence, not approval. Review and approve here (replying does nothing): {link}")
     if _text_admin(text):
