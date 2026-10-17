@@ -34,6 +34,8 @@ Hacking 10:30am Sat Oct 17 → submissions + live demos 10:00am Sun Oct 18.
   chart → evening: agent-to-agent dispute + reply polish → Sunday morning only if done: month-end batch.
   Show Ethan (Primitive) the demo by dinner, and show Alex (Inkbox) the agent team.
 
+**Airlock MCP server (Manufact Cloud, deployed 1:30pm):** `https://calm-steel-a2m6g.run.mcp-use.com/mcp`. It calls the backend through the ngrok tunnel with a bearer token, so the laptop, API, executor and tunnel must be running. Redeploy: `cd mcp && npx -y mcp-use@latest deploy` (Node 22).
+
 ## Saturday afternoon roadmap (updated 1:45pm)
 
 | By | What |
