@@ -20,8 +20,12 @@ log = logging.getLogger("airlock.verify")
 OTP_TTL = timedelta(minutes=10)
 
 
-def _identity(ib: Inkbox):
-    return ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
+def _identity(ib: Inkbox, voice: bool = False):
+    """Vendor checks by text come from their own identity (INKBOX_VERIFY_HANDLE) so they never share a thread with
+    admin briefs. Voice calls need a phone number, which only the main identity has."""
+    if voice:
+        return ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
+    return ib.get_identity(config.get("INKBOX_VERIFY_HANDLE") or config.get("INKBOX_HANDLE", "airlock"))
 
 
 def _hash(code: str) -> str:
@@ -55,9 +59,8 @@ def send_code(change_request_id: str) -> dict:
         ident = _identity(ib)
         try:
             ident.send_text(to=phone, text=text)
-        except Exception as e:
-            if "not_opted_in" not in str(e) and "opted" not in str(e):
-                raise
+        except Exception as e:  # not opted in to SMS, or this identity has no number: use iMessage
+            log.info("sms unavailable (%s); using imessage", e)
             channel = "imessage"
             ident.send_imessage(to=phone, text=text)
     sent_at = datetime.now(timezone.utc)
@@ -90,7 +93,7 @@ def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
         "\"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
         "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
-        call = _identity(ib).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
+        call = _identity(ib, voice=True).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
     sent_at = datetime.now(timezone.utc)
     db.one("""update change_requests set otp_hash=null, otp_expires_at=%s, otp_used=false,
               evidence = evidence || %s::jsonb where id=%s returning id""",
@@ -107,7 +110,7 @@ YES_WORDS = re.compile(r"\b(yes|yeah|yep|correct|we did|that'?s right|confirm(ed
 def _check_call(cr: dict) -> dict | None:
     call_id = cr["evidence"]["call_id"]
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
-        ident = _identity(ib)
+        ident = _identity(ib, voice=True)
         call = next((c for c in ident.list_calls(limit=20) if str(c.id) == call_id), None)
         if call is None or not getattr(call, "ended_at", None):
             return None  # still ringing / talking
