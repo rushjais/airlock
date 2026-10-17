@@ -44,8 +44,9 @@ def send_code(change_request_id: str) -> dict:
     code = f"{secrets.randbelow(10**6):06d}"
     possessive = vendor["name"] + ("'" if vendor["name"].endswith("s") else "'s")
     new = cr["new_destination"].replace("account(s) ending", "an account ending")
-    text = (f"Kiln Supply Co. (Airlock): we received an email asking to send {possessive} payments to {new}. "
-            f"Did you request this?\nReply YES {code} to confirm, or NO if you did not.")
+    text = (f"VENDOR CHECK for {vendor['name']}\nThis is Kiln Supply Co. accounts payable. We received an email asking "
+            f"to send {possessive} payments to {new}. Did you request this?\nReply YES {code} to confirm, or NO if you "
+            "did not.")
     phone = vendor["registered_phone"]  # the phone on file, never a number from the email
     if (config.get("AIRLOCK_VERIFY_CHANNEL") or "text") == "call":
         return _place_call(cr, vendor, new, phone)

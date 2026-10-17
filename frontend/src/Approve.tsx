@@ -54,6 +54,11 @@ export default function Approve() {
   const a = d.authorization;
   const secondsLeft = a?.release_at ? Math.max(0, Math.ceil((new Date(a.release_at).getTime() - now) / 1000)) : 0;
   const scheduled = a?.status === "scheduled";
+  const STATUS_WORDS: Record<string, string> = {
+    pending_verification: "Waiting for vendor confirmation", verified: "Vendor confirmed; needs your decision",
+    approved: "Approved", rejected: "Rejected", superseded: "Superseded (vendor records changed; start over)",
+    unresolved: "No clear answer from the vendor; call them yourself",
+  };
 
   return (
     <Shell>
@@ -72,7 +77,7 @@ export default function Approve() {
         <dd>{d.status === "pending_verification" ? <span className="text-held font-semibold">Waiting for the vendor to answer on the phone on file</span>
              : <>Confirmed by {d.evidence.channel ?? "phone"} from the phone on file (ending {(d.evidence.phone_on_file ?? "").slice(-4)})</>}</dd>
         <dt className="text-muted">Registry version</dt><dd className="num">v{d.registry_version}</dd>
-        <dt className="text-muted">Request status</dt><dd className="num">{d.status}</dd>
+        <dt className="text-muted">Request status</dt><dd>{STATUS_WORDS[d.status] ?? d.status}</dd>
       </dl>
 
       {d.status === "verified" && (

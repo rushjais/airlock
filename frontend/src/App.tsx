@@ -258,6 +258,28 @@ const VERDICT: Record<string, { word: string; cls: string }> = {
   pending_approval: { word: "Needs approval", cls: "text-held" },
 };
 
+// Plain-English gloss for each policy rule (the slug stays visible: it's what the code checked).
+const WHY: Record<string, string> = {
+  matched_accepted_obligation: "Sender, amount and PO match an approved, received order. Paid to the account on file.",
+  amount_mismatch: "The amount doesn't match what was approved for this PO. Asked the vendor to explain or reissue.",
+  destination_change_requested: "The email asks to pay a different account. Checking with the vendor's phone on file.",
+  obligation_not_accepted: "The order is approved but the goods haven't been received yet.",
+  obligation_already_settled: "This order was already paid. No second payment.",
+  obligation_already_reserved: "A payment for this order is already in progress. No second payment.",
+  obligation_cancelled: "This order was cancelled.",
+  sender_not_registered: "The sender's domain isn't a registered vendor (it imitates one).",
+  unknown_vendor: "Not a registered vendor. Onboarding needs a human.",
+  no_obligation: "No approved order covers this charge. Needs a human to approve it first.",
+  over_auto_pay_limit: "Above the auto-pay limit. Waiting for a human.",
+  outbound_recipient_not_registered: "Asks us to send internal documents to an address that isn't on file.",
+  unsigned_agent_mail: "Claims to be one of our agents but isn't signed by Airlock.",
+  change_rejected_paying_registry_destination: "The vendor's phone on file said they didn't change banks. Paid the account on file.",
+  change_rejected_held_by_policy: "The vendor said they didn't change banks. Your policy holds the invoice for you.",
+  change_rejected_invoice_needs_review: "Change rejected, but the invoice itself needs a human look.",
+  change_rejected_no_invoice: "Change rejected. There was no invoice to pay.",
+  reader_unavailable: "Couldn't read the email safely, so nothing can pay. It will be retried.",
+};
+
 function fmt(v: string | number | null | undefined, money?: boolean) {
   if (v === null || v === undefined) return "-";
   return money && typeof v === "number" ? usd(v) : String(v);
@@ -297,7 +319,8 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
       </table>
 
       <dl className="space-y-3 text-[16px]">
-        <div><dt className="text-muted font-semibold mb-1">Rule that fired</dt><dd className="num text-[16px]">{card.reason}</dd></div>
+        <div><dt className="text-muted font-semibold mb-1">Rule that fired</dt><dd className="num text-[16px]">{card.reason}</dd>
+          {card.reason && WHY[card.reason] && <dd className="text-[15px] text-muted mt-1">{WHY[card.reason]}</dd>}</div>
         <div><dt className="text-muted font-semibold mb-1">Next action</dt><dd className="num text-[16px] [overflow-wrap:anywhere]">{card.case_status === "paid" ? "none (paid)" : card.next_action}</dd></div>
         {card.flags.length > 0 && (
           <div><dt className="text-muted font-semibold mb-1.5">Flags</dt>
@@ -377,7 +400,7 @@ function AfterRejected({ value }: { value?: "pay_on_file" | "hold" }) {
   const pick = async (v: "pay_on_file" | "hold") => { setPending(v); await api.setAfterRejected(v); setTimeout(() => setPending(null), 2000); };
   const opt = (v: "pay_on_file" | "hold", label: string) => (
     <button onClick={() => pick(v)} aria-pressed={cur === v}
-            className={`flex-1 px-2 py-1.5 rounded text-[13px] font-semibold ${cur === v ? "bg-raised text-text" : "text-muted hover:text-text"}`}>
+            className={`flex-1 px-2 py-1.5 rounded text-[13px] font-semibold ${cur === v ? "bg-text text-bg" : "text-muted hover:text-text"}`}>
       {label}</button>
   );
   return (

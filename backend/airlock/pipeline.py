@@ -218,9 +218,9 @@ def _text_admin(text: str, subject: str | None = None) -> bool:
         with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
             ident = ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
             try:
-                ident.send_text(to=phone, text=text)
+                ident.send_text(to=phone, text="FOR YOU (Kiln admin)\n" + text)
             except Exception:
-                ident.send_imessage(to=phone, text=text)
+                ident.send_imessage(to=phone, text="FOR YOU (Kiln admin)\n" + text)
         return True
     except Exception as e:
         log.warning("admin text failed: %s", e)
