@@ -16,6 +16,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 log = logging.getLogger("airlock.api")
 app = FastAPI(title="Airlock")
 
+from .agent_api import router as agent_router  # noqa: E402
+
+app.include_router(agent_router)
+
 
 @app.post("/webhooks/primitive")
 async def primitive_webhook(request: Request, background: BackgroundTasks):

@@ -58,3 +58,8 @@ scratch/
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
+
+# MCP server
+mcp/node_modules/
+mcp/dist/
+mcp/.mcp-use/
