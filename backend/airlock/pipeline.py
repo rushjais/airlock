@@ -182,8 +182,9 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
             _treasurer_turn(case_id, message_id, verdict)
             _admin_brief(case_id, change_request_id, "no")
         else:
-            db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
-            _admin_brief(case_id, change_request_id, "no_held")
+            held = verdict["reason"] == "change_rejected_held_by_policy"
+            db.one("update cases set status=%s where id=%s returning id", "needs_approval" if held else "denied", case_id)
+            _admin_brief(case_id, change_request_id, "no_held" if held else "no_nothing_to_pay")
     elif reply["answer"] != "yes":
         agents.post(case_id, "verifier", "result",
                     f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
@@ -242,7 +243,12 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
     subject = {"no": f"Airlock FYI: {possessive(cr['name'])} bank change rejected, {amt} paid to the account on file",
                "no_held": f"Airlock needs you: {possessive(cr['name'])} bank change rejected, {amt} held for your review"
                }.get(outcome, f"Airlock needs you: {cr['name']} bank change unresolved, {amt} on hold")
-    if outcome == "no_held":
+    if outcome == "no_nothing_to_pay":
+        subject = f"Airlock FYI: {possessive(cr['name'])} bank change rejected, nothing paid"
+        text = (f"Airlock FYI (no action needed): an email asked to move {possessive(cr['name'])} payments to an account ending "
+                f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it, "
+                f"so I rejected the change. The email didn't match an approved order, so nothing was paid.")
+    elif outcome == "no_held":
         text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} {possessive(cr['name'])} phone on file and they said they did NOT request it, "
                 f"so I rejected the change. Your policy holds the invoice after a rejected change: {amt} is waiting "
