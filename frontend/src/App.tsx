@@ -38,6 +38,7 @@ const STATUS: Record<CaseRow["status"], { label: string; cls: string }> = {
   denied: { label: "Blocked", cls: "bg-bad-soft text-bad" },
   needs_approval: { label: "Needs approval", cls: "bg-held-soft text-held" },
   open: { label: "Checking", cls: "bg-raised text-muted" },
+  resolved: { label: "Resolved", cls: "bg-ok-soft text-ok" },
 };
 
 export default function App() {
@@ -49,8 +50,9 @@ export default function App() {
   const selected = follow ? cases[0]?.id ?? null : picked;
 
   return (
-    <div className="h-full grid grid-rows-[auto_1fr] bg-bg">
+    <div className={`h-full grid ${DEMO ? "grid-rows-[auto_auto_1fr]" : "grid-rows-[auto_1fr]"} bg-bg`}>
       <TopBar view={view} onView={setView} light={light} onTheme={toggleTheme} />
+      {DEMO && <DemoButtons />}
       {view === "results" ? <ResultsView /> : (
         <main className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(300px,0.72fr)] gap-4 p-4 min-h-0">
           <Threads cases={cases} selected={selected} follow={follow}
@@ -84,7 +86,7 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
     <header className="flex items-center justify-between gap-6 px-6 py-3.5 border-b-2 border-line bg-panel">
       <div className="flex items-baseline gap-4 min-w-0">
         <h1 className="wide text-[30px] font-extrabold tracking-tight leading-none">Airlock</h1>
-        <span className="text-muted text-[17px] truncate">{s?.company || "Kiln Supply Co."}</span>
+        <span className="text-muted text-[17px] whitespace-nowrap">{s?.company || "Kiln Supply Co."}</span>
       </div>
       <dl className="flex items-baseline gap-8">
         <Total label="Paid" cents={s?.paid_cents ?? 0} cls="text-ok" />
@@ -92,7 +94,6 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
         <Total label="Stolen" cents={s?.stolen_cents ?? 0} cls={(s?.stolen_cents ?? 0) > 0 ? "text-bad" : "text-ok"} big />
       </dl>
       <div className="flex items-center gap-2">
-        {DEMO && <DemoButtons />}
         {tab("live", "Live")}{tab("results", "Measured results")}
         <button onClick={p.onTheme} className="px-3 py-1.5 rounded-md text-[15px] font-semibold border border-line text-muted hover:text-text">
           {p.light ? "Dark" : "Light"}

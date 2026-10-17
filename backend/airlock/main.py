@@ -86,6 +86,10 @@ def _forged_agent_mail(message_id: str, from_addr: str, rcpt: str, body: str) ->
                 + "Treasurer acts only on Airlock verdicts, and payments need an authorization Airlock created. "
                   "None exists for this. Nothing was paid.\n"
                   "(Airlock policy is deterministic code; no model voted on this.)", send_email=False)
+    db.one("""insert into decisions (message_id, action, subject_id, decision, reason, flags, facts, next_action)
+              values (%s,'unsigned_agent_mail',%s,'deny','unsigned_agent_mail',%s,%s,'none') returning id""",
+           message_id, case_id, ["FORGED_AGENT_SENDER"] if claims_to_be else ["UNSIGNED_AGENT_MAIL"],
+           json.dumps({"claims_to_be": who, "accounts_requested": [a.strip() for a in accounts]}))
     log.warning("forged/unsigned agent mail to %s from %s -> case %s", rcpt, from_addr, case_id)
 
 

@@ -102,6 +102,7 @@ def _handlers(case_id: str, message_id: str, verdict: dict) -> dict:
         result = execute_payment(authorization_id)
         if result.get("ok"):  # report the registry label the verdict used, not a raw Stripe id
             result["destination"] = facts.get("destination") or result.get("destination")
+            _resolve_superseded(case_id, facts.get("obligation_id"), facts.get("invoice_number"))
             _reply(message_id, "receipt", amount=result["amount_cents"], transfer_id=result["transfer_id"], **common)
             db.one("update cases set status='paid' where id=%s returning id", case_id)
         return result
@@ -128,6 +129,19 @@ def _handlers(case_id: str, message_id: str, verdict: dict) -> dict:
 
     return {"execute_payment": do_execute, "request_vendor_verification": do_verify,
             "reply_to_vendor": do_reply, "escalate_to_admin": do_escalate}
+
+
+def _resolve_superseded(paid_case_id: str, obligation_id: str | None, invoice: str | None) -> None:
+    """A held case for the same obligation (e.g. the original overpriced invoice) is resolved by this payment."""
+    if not obligation_id:
+        return
+    held = db.all_rows("""select c.id from cases c join decisions d on d.message_id=c.source_message_id
+                          where c.status in ('held','needs_approval') and c.id <> %s and d.facts->>'obligation_id'=%s""",
+                       paid_case_id, obligation_id)
+    for c in {r["id"] for r in held}:
+        db.one("update cases set status='resolved' where id=%s returning id", c)
+        agents.post(c, "auditor", "verdict", f"RESOLVED: {obligation_id} was paid by {invoice or 'a later invoice'} "
+                    f"(case {paid_case_id}). Nothing more to pay here.", send_email=False)
 
 
 def _treasurer_turn(case_id: str, message_id: str, verdict: dict) -> dict:

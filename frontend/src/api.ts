@@ -1,7 +1,7 @@
 export type CaseRow = {
   id: string;
   subject: string;
-  status: "open" | "paid" | "held" | "denied" | "needs_approval";
+  status: "open" | "paid" | "held" | "denied" | "needs_approval" | "resolved";
   created_at: string;
   vendor_id: string | null;
   from_address: string;
