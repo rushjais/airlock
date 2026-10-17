@@ -63,3 +63,6 @@ frontend/dist/
 mcp/node_modules/
 mcp/dist/
 mcp/.mcp-use/
+
+# service pids/logs
+.run/

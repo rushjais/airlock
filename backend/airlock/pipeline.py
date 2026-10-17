@@ -192,7 +192,17 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
 
 
 def process(message_id: str) -> dict:
-    reader.read(message_id)
+    try:
+        reader.read(message_id)
+    except Exception as e:  # fail safe: without claims nothing can be authorized; show it as held
+        m = db.one("select from_address, subject from messages where id=%s", message_id)
+        case_id = agents.open_case(message_id, {"from_domain": m["from_address"].split("@")[-1]}, None)
+        agents.post(case_id, "auditor", "verdict",
+                    f"HOLD: couldn't read this email right now ({type(e).__name__}). Nothing was paid. "
+                    "It will be retried; a held email can never pay by itself.", send_email=False)
+        db.one("update cases set status='held' where id=%s returning id", case_id)
+        log.warning("reader failed for %s: %s", message_id, e)
+        return {"decision": "hold", "reason": "reader_unavailable", "case_id": case_id}
     verdict = policy.propose_payment(message_id)
     facts = verdict["facts"]
     vendor = db.one("select name from vendors where id=%s", facts.get("vendor_id")) if facts.get("vendor_id") else None

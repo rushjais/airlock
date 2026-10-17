@@ -260,6 +260,24 @@ def approval_reconfirm(cr_id: str, body: AuthBody):
 @app.on_event("startup")
 def _start_workers():
     approvals.start_release_worker()
+    _resume_vendor_listeners()
+
+
+def _resume_vendor_listeners() -> None:
+    """A restart must not orphan a verification that's waiting on the vendor's text reply."""
+    import threading
+
+    from . import agent_api
+    pending = db.all_rows("""select id, source_message_id from change_requests
+                             where status='pending_verification' and otp_expires_at > now()""")
+    for cr in pending:
+        case = db.one("select id from cases where source_message_id=%s", cr["source_message_id"])
+        if case:
+            target, args = pipeline._await_vendor, (case["id"], str(cr["source_message_id"]), str(cr["id"]))
+        else:
+            target, args = agent_api._await_vendor, (str(cr["id"]),)
+        threading.Thread(target=target, args=args, daemon=True).start()
+        log.info("resumed vendor-reply listener for change request %s", cr["id"])
 
 
 @app.post("/api/demo/replay/{scenario:path}")

@@ -76,7 +76,12 @@ def propose(ref: MessageRef):
     if existing:  # already decided (e.g. by the webhook pipeline): return the same verdict, don't double-reserve
         return _verdict(existing)
     if not db.one("select 1 from claims where message_id=%s", ref.message_id):
-        reader.read(ref.message_id)
+        try:
+            reader.read(ref.message_id)
+        except Exception as e:  # fail safe: no claims -> nothing can be authorized
+            return {"decision": "hold", "reason": "reader_unavailable", "flags": [],
+                    "next_action": "retry propose_payment later; nothing was paid",
+                    "facts": {"error": type(e).__name__}}
     return _verdict(policy.propose_payment(ref.message_id))
 
 
@@ -112,7 +117,12 @@ def verify(ref: ChangeRef):
     import threading
 
     from . import verify as V
-    sent = V.send_code(ref.change_request_id)
+    try:
+        sent = V.send_code(ref.change_request_id)
+    except Exception as e:  # can't reach the phone on file: stay held, a human takes over
+        return {"decision": "hold", "reason": "verification_channel_unavailable", "flags": [],
+                "next_action": "escalate_to_admin; the invoice stays held and nothing was paid",
+                "facts": {"error": str(e)[:160]}}
     if sent.get("ok"):
         threading.Thread(target=_await_vendor, args=(ref.change_request_id,), daemon=True).start()
     return {"decision": "hold", "reason": "awaiting_vendor_confirmation" if sent.get("ok") else sent.get("reason"),
