@@ -192,6 +192,11 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
 
 
 def process(message_id: str) -> dict:
+    with db.message_lock(message_id):
+        return _process_locked(message_id)
+
+
+def _process_locked(message_id: str) -> dict:
     try:
         reader.read(message_id)
     except Exception as e:  # fail safe: without claims nothing can be authorized; show it as held

@@ -41,3 +41,14 @@ def one(sql: str, *params):
 def all_rows(sql: str, *params):
     with pool().connection() as conn:
         return conn.execute(sql, params).fetchall()
+
+
+@contextmanager
+def message_lock(key: str):
+    """Serialize work on one email across threads/processes (Postgres session advisory lock)."""
+    with pool().connection() as conn:
+        conn.execute("select pg_advisory_lock(hashtext(%s))", (key,))
+        try:
+            yield
+        finally:
+            conn.execute("select pg_advisory_unlock(hashtext(%s))", (key,))

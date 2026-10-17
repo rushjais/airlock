@@ -53,9 +53,10 @@ def open_case(message_id: str, facts: dict, vendor_name: str | None) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (facts.get("invoice_number") or "invoice").lower()).strip("-")
     case_id = f"case-{slug}-{uuid.uuid4().hex[:4]}"
     subject = f"[{case_id}] {vendor_name or facts.get('from_domain')}: {facts.get('invoice_number') or 'inbound message'}"
-    db.one("insert into cases (id, source_message_id, vendor_id, subject) values (%s,%s,%s,%s) returning id",
-           case_id, message_id, facts.get("vendor_id"), subject)
-    return case_id
+    row = db.one("""insert into cases (id, source_message_id, vendor_id, subject) values (%s,%s,%s,%s)
+                    on conflict (source_message_id) do nothing returning id""",
+                 case_id, message_id, facts.get("vendor_id"), subject)
+    return row["id"] if row else db.one("select id from cases where source_message_id=%s", message_id)["id"]
 
 
 def post(case_id: str, author: str, kind: str, body: str, data: dict | None = None, send_email: bool = True) -> None:
