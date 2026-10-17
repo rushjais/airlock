@@ -165,13 +165,21 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
         db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
         return
     if reply["answer"] == "no":
+        heard = "said on the call" if reply.get("transcript") else "answered from the phone on file"
+        transcript = ("\nCall transcript:\n" + reply["transcript"].replace("local:", "Airlock:").replace("remote:", "Vendor:")
+                      if reply.get("transcript") else "")
         agents.post(case_id, "verifier", "result",
-                    f"The vendor answered from the phone on file: \"{reply['reply']}\". They did NOT change banks, "
-                    f"so the email's account change is rejected.")
+                    f"The vendor {heard}: \"{reply['reply']}\". They did NOT change banks, "
+                    f"so the email's account change is rejected.{transcript}", {"transcript": reply.get("transcript")})
         verdict = policy.resolve_change_rejected(change_request_id, {"vendor_reply": reply["reply"], "reply": reply["reply"]})
         agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
         if verdict["next_action"] == "execute_payment":
             _treasurer_turn(case_id, message_id, verdict)
+    elif reply["answer"] != "yes":
+        agents.post(case_id, "verifier", "result",
+                    f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
+                    "Still holding; escalating to an admin.", reply)
+        db.one("update cases set status='needs_approval' where id=%s returning id", case_id)
     else:
         db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
         agents.post(case_id, "verifier", "result",

@@ -39,6 +39,8 @@ def send_code(change_request_id: str) -> dict:
     text = (f"Kiln Supply Co. (Airlock): we received an email asking to send {possessive} payments to {new}. "
             f"Did you request this?\nReply YES {code} to confirm, or NO if you did not.")
     phone = vendor["registered_phone"]  # the phone on file, never a number from the email
+    if (config.get("AIRLOCK_VERIFY_CHANNEL") or "text") == "call":
+        return _place_call(cr, vendor, new, phone)
     channel = "sms"
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
@@ -58,6 +60,57 @@ def send_code(change_request_id: str) -> dict:
     return {"ok": True, "channel": channel, "phone_on_file_last4": phone[-4:], "sent_at": sent_at.isoformat()}
 
 
+def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
+    """Inkbox Voice AI calls the phone on file and asks a yes/no question. The answer is evidence only."""
+    ob = db.one("select po_number, amount_cents from obligations where id=%s", cr["held_obligation_id"]) \
+        if cr["held_obligation_id"] else None
+    inv = db.one("select value from claims where message_id=%s and field='invoice_number' limit 1", cr["source_message_id"])
+    what = (f"invoice {inv['value'] if inv else ''} for ${ob['amount_cents'] / 100:,.2f} ({ob['po_number']})" if ob
+            else "their invoices")
+    new_digits = " ".join((cr.get("new_last4") or "").strip())
+    reason = (
+        "You are the automated accounts-payable assistant for Kiln Supply Co., calling the phone number Kiln already "
+        f"has on file for {vendor['name']}. Follow this script closely.\n"
+        f"1. Say: \"Hi, this is the automated accounts-payable assistant for Kiln Supply Company. We received an email "
+        f"that appears to be from {vendor['name']}, asking us to send the payment for {what} to a new bank account "
+        f"ending in {new_digits or 'a new number'}. Did {vendor['name']} request this change? Please answer yes or no.\"\n"
+        "2. Wait for their answer. If it is not a clear yes or no, ask once more: \"Just to confirm, did your company "
+        "request a change to your bank account, yes or no?\"\n"
+        "3. Then say: \"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
+        "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
+    with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
+        call = _identity(ib).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
+    sent_at = datetime.now(timezone.utc)
+    db.one("""update change_requests set otp_hash=null, otp_expires_at=%s, otp_used=false,
+              evidence = evidence || %s::jsonb where id=%s returning id""",
+           sent_at + OTP_TTL, json.dumps({"verification_sent_at": sent_at.isoformat(), "channel": "voice call",
+                                          "call_id": str(call.id), "phone_on_file": phone}), cr["id"])
+    return {"ok": True, "channel": "voice call", "phone_on_file_last4": phone[-4:], "sent_at": sent_at.isoformat(),
+            "call_id": str(call.id)}
+
+
+NO_WORDS = re.compile(r"\b(no|nope|didn'?t|did not|not us|never|that'?s not|wasn'?t us)\b", re.I)
+YES_WORDS = re.compile(r"\b(yes|yeah|yep|correct|we did|that'?s right|confirm(ed)?)\b", re.I)
+
+
+def _check_call(cr: dict) -> dict | None:
+    call_id = cr["evidence"]["call_id"]
+    with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
+        ident = _identity(ib)
+        call = next((c for c in ident.list_calls(limit=20) if str(c.id) == call_id), None)
+        if call is None or not getattr(call, "ended_at", None):
+            return None  # still ringing / talking
+        turns = ident.list_transcripts(call_id)
+    vendor_said = " ".join((t.text or "") for t in turns
+                           if str(getattr(t, "party", "")).lower() not in ("agent", "local", "assistant", "ai"))
+    transcript = "\n".join(f"{getattr(t, 'party', '?')}: {t.text}" for t in turns)
+    if not vendor_said.strip():
+        return {"answer": "unclear", "reply": "(no answer on the call)", "transcript": transcript}
+    no, yes = bool(NO_WORDS.search(vendor_said)), bool(YES_WORDS.search(vendor_said))
+    answer = "no" if no and not yes else "yes" if yes and not no else "unclear"
+    return {"answer": answer, "reply": vendor_said.strip()[:300], "transcript": transcript}
+
+
 def _replies_since(phone: str, since: datetime) -> list[str]:
     out = []
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
@@ -74,6 +127,8 @@ def _replies_since(phone: str, since: datetime) -> list[str]:
 def check_reply(change_request_id: str) -> dict | None:
     """Look for the vendor's answer. Returns {'answer': 'no'|'yes', ...} or None if nothing yet."""
     cr = db.one("select * from change_requests where id=%s", change_request_id)
+    if cr["evidence"].get("channel") == "voice call":
+        return _check_call(cr)
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
     since = datetime.fromisoformat(cr["evidence"]["verification_sent_at"])
     for text in _replies_since(vendor["registered_phone"], since):
@@ -97,7 +152,7 @@ def wait_for_reply(change_request_id: str, timeout_s: int = 600, every_s: float 
         except Exception as e:
             log.warning("inkbox poll failed: %s", e)
             r = None
-        if r and r["answer"] != "invalid":
+        if r and r["answer"] not in ("invalid",):
             return r
         time.sleep(every_s)
     return None
