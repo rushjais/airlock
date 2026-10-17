@@ -279,7 +279,7 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
 
       <dl className="space-y-3 text-[16px]">
         <div><dt className="text-muted font-semibold mb-1">Rule that fired</dt><dd className="num text-[16px]">{card.reason}</dd></div>
-        <div><dt className="text-muted font-semibold mb-1">Next action</dt><dd className="num text-[16px] [overflow-wrap:anywhere]">{card.next_action}</dd></div>
+        <div><dt className="text-muted font-semibold mb-1">Next action</dt><dd className="num text-[16px] [overflow-wrap:anywhere]">{card.case_status === "paid" ? "none (paid)" : card.next_action}</dd></div>
         {card.flags.length > 0 && (
           <div><dt className="text-muted font-semibold mb-1.5">Flags</dt>
             <dd className="flex flex-wrap gap-1.5">
