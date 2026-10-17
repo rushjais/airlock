@@ -34,6 +34,19 @@ Hacking 10:30am Sat Oct 17 → submissions + live demos 10:00am Sun Oct 18.
   chart → evening: agent-to-agent dispute + reply polish → Sunday morning only if done: month-end batch.
   Show Ethan (Primitive) the demo by dinner, and show Alex (Inkbox) the agent team.
 
+## Saturday afternoon roadmap (updated 1:45pm)
+
+| By | What |
+|---|---|
+| done | Core loop live, 10/10 scenarios + 3 unseen + 3 hard, invariant tests, agent team on Primitive threads, live phone rescue, before/after harness, control room |
+| ~3:30 | /approve page: signed admin link, risk-scaled friction, `scheduled` undo window + Cancel |
+| ~4:30 | Chaos test: kill the executor mid-transfer, restart, reconcile, exactly one payment |
+| Dinner | Show Ethan (Primitive) and Alex (Inkbox) |
+| 6:30–8 | Airlock MCP server on Manufact mcp-use (propose_payment, request_vendor_verification, get_decision, list_cases; every tool returns decision/reason/flags/next_action; no tool takes destination or amount), deployed to Manufact cloud, Claude Desktop holds a payment it was tricked into proposing |
+| 8–9 | Fuzzing: thousands of generated attacks, assert zero violations, report the real number; red-team attacks h4–h8; multi-run before/after rates |
+| 9–11 | Agent-to-agent dispute, forged-email-to-Treasurer moment, README with measured numbers |
+| Sun AM (optional) | Month-end batch, voice-call verification. Feature freeze 8am |
+
 ## The pitch (one breath)
 
 > Agents will get fooled. Airlock makes sure getting fooled can't move money, so you can finally let your agent pay the bills.
