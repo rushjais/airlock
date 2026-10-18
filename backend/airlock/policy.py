@@ -14,7 +14,7 @@ from .reader import claims_for
 ESCALATE_TO_HOLD = {"EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT", "REPLY_TO_MISMATCH", "BANK_CHANGE_LANGUAGE",
                     "URGENCY_LANGUAGE", "NEW_LINE_ITEM", "DATA_REQUEST", "AMOUNT_DEVIATION",
                     "CONTRACT_PRICE_MISMATCH", "CHANNEL_AVOIDANCE", "SECRECY_LANGUAGE", "PAYMENT_LINK",
-                    "VENDOR_NAME_MISMATCH", "EXEC_APPROVAL_CLAIM", "INVISIBLE_UNICODE"}
+                    "VENDOR_NAME_MISMATCH", "EXEC_APPROVAL_CLAIM", "INVISIBLE_UNICODE", "SENDER_AUTH_FAILED"}
 # Advisory only (shown and explained, never change the decision): FIRST_TIME_SENDER, NEW_CONTACT_IN_EMAIL,
 # INVOICE_NUMBER_PATTERN, THRESHOLD_DODGING, and every REVIEW:* finding from the model reviewer.
 ESCALATE_TO_DENY = {"DUPLICATE_INVOICE"}
@@ -93,6 +93,7 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
         invoice_number=_first(claims, "invoice_number"),
         other_vendors=[x for x in vendors if x["id"] != vid],
         display_name=parseaddr(hdr.get("from_header") or "")[0],
+        sender_authenticated=msg["sender_authenticated"],
         first_time_sender=first_time,
         auto_pay_limit_cents=company.get("auto_pay_limit_cents"),
         raw_text=(msg["subject"] or "") + "\n" + raw_body + "\n" + raw_att,
@@ -316,6 +317,6 @@ def resolve_change_rejected(change_request_id: str, evidence: dict) -> dict:
     if auth_id is None:
         return _result(cr["source_message_id"], "deny", "obligation_already_reserved", [], facts,
                        "reply_in_thread:already_paid", subject_id=ob["id"])
-    facts.update(amount_cents=ob["amount_cents"], authorization_id=auth_id)
+    facts.update(amount_cents=ob["amount_cents"], authorization_id=auth_id, invoice_number=inv, po_number=ob["po_number"])
     return _result(cr["source_message_id"], "pay", "change_rejected_paying_registry_destination", [], facts,
                    "execute_payment", subject_id=ob["id"], authorization_id=auth_id)

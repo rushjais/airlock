@@ -129,3 +129,14 @@ def test_treasurer_never_sees_reviewer_findings():
     v = policy.propose_payment(mid)
     assert "REVIEW:IMPERSONATION" in v["flags"]
     assert not any(f.startswith("REVIEW:") for f in treasurer.compact(v)["flags"])
+
+
+def test_forged_from_holds_even_when_everything_else_matches():
+    mid, _ = store(InboundEmail(provider_message_id=f"spoof:{uuid.uuid4().hex[:8]}",
+                                from_header="Acme Metals <billing@acmemetals.com>", to="ap@kiln",
+                                subject="Invoice INV-1042 for PO-118", body_text="Invoice INV-1042 for $1,450.00, PO-118.",
+                                sender_authenticated=False))
+    add_claims(mid, {"vendor_name": "Acme Metals", "invoice_number": "INV-1042", "po_number": "PO-118",
+                     "amount_cents": "145000"}, labels=("EXTERNAL_EMAIL", "MODEL_READER"))
+    d = policy.propose_payment(mid)
+    assert "SENDER_AUTH_FAILED" in d["flags"] and d["decision"] == "hold"

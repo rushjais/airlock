@@ -56,6 +56,7 @@ class Evidence:
     invoice_number: str | None
     other_vendors: list[dict] = field(default_factory=list)  # registry rows for every vendor except the routed one
     display_name: str = ""             # From display name (attacker-controlled)
+    sender_authenticated: bool | None = None  # Primitive's SPF/DKIM/DMARC verdict: a hint, never identity
     first_time_sender: bool = False    # this exact address never wrote before and isn't the registered contact
     auto_pay_limit_cents: int | None = None
     raw_text: str = ""                 # body + attachments before invisible characters were stripped
@@ -216,6 +217,8 @@ def extra_signals(e: Evidence) -> list[str]:
     f: list[str] = []
     email_text = f"{e.subject}\n{e.body}"
     every = email_text + "\n" + e.attachment_text
+    if e.sender_authenticated is False:  # the From domain didn't vouch for this message (spoofed From)
+        f.append("SENDER_AUTH_FAILED")
     if e.raw_text and INVISIBLE.search(e.raw_text):
         f.append("INVISIBLE_UNICODE")
     if CHANNEL_AVOIDANCE.search(every):
@@ -279,6 +282,7 @@ EXPLAIN = {
     "INVOICE_NUMBER_PATTERN": "invoice number doesn't match the vendor's usual format",
     "THRESHOLD_DODGING": "amount just under the auto-pay limit",
     "INVISIBLE_UNICODE": "hidden invisible characters",
+    "SENDER_AUTH_FAILED": "the sender's domain didn't vouch for this email (forged From)",
     "ISSUER_MISMATCH": "the attached invoice is another company's",
     "DUPLICATE_INVOICE": "an invoice that was already paid",
     "DATA_REQUEST": "asks for internal documents",
