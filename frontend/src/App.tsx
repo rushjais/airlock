@@ -12,7 +12,13 @@ function usePoll<T>(fn: () => Promise<T>, deps: unknown[] = []): T | null {
   const [data, setData] = useState<T | null>(null);
   useEffect(() => {
     let alive = true;
-    const tick = () => fn().then((d) => alive && setData(d)).catch(() => {});
+    let busy = false;  // never stack requests: a slow answer would otherwise queue more behind it
+    setData(null);     // switching cases shows a blank panel, never the previous case's data
+    const tick = () => {
+      if (busy) return;
+      busy = true;
+      fn().then((d) => alive && setData(d)).catch(() => {}).finally(() => { busy = false; });
+    };
     tick();
     const t = setInterval(tick, POLL_MS);
     return () => { alive = false; clearInterval(t); };

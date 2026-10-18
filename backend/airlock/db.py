@@ -17,12 +17,11 @@ def pool() -> ConnectionPool:
         _pool = ConnectionPool(
             config.need("DATABASE_URL"),
             min_size=1,
-            max_size=6,  # API + executor + scripts must fit Supabase's 15-client session pooler
-            # Supabase's pooler drops idle connections; check each one before use and recycle idle ones, so a
-            # long-running process (the executor) never gets a dead connection mid-payment.
-            check=ConnectionPool.check_connection,
-            max_idle=120,
-            max_lifetime=1800,
+            max_size=8,  # API + executor + scripts must fit Supabase's 15-client session pooler
+            # Supabase's pooler drops idle connections: recycle ours before it does, so a long-running process
+            # (the executor) never gets a dead connection mid-payment. (No per-checkout ping: it doubled latency.)
+            max_idle=60,
+            max_lifetime=600,
             kwargs={"row_factory": dict_row, "prepare_threshold": None, "options": f"-c search_path={config.DB_SCHEMA},public"},
             open=True,
         )
