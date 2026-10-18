@@ -57,6 +57,16 @@ Out of scope: a compromised admin, host, database, or codebase; availability att
 These are enforced in this prototype and covered by tests. They are not a claim that the system is unbreakable.
 
 ## Prior art
+> Independent hackathon project, not affiliated with **WorkOS Airlock** (WorkOS's intent-based access control for
+> agents, early access as of Oct 2026). Same category, different design:
+
+| | WorkOS Airlock | This Airlock |
+|---|---|---|
+| Who decides | Natural-language policies; some rules judged per call by a model | Deterministic code; a model never decides pay vs. hold |
+| Scope | General agent tool calls | Money: registry-bound destination, obligation-bound amount, one payment per obligation |
+| When unsure | Sends the call to a human | Resolves it: checks the vendor's phone on file, disputes the price with the vendor, then finishes |
+| Where it lives | A central policy layer | In the inbox: agents coordinating over email |
+
 - **CaMeL** (Google DeepMind, 2025): trusted planner, tool-less reader, provenance tracking, policies at tool calls.
 - **Hallmark** (AWS Builder Center community post, Sep 2026): provenance firewall for invoice payments on simulated data.
 - **Classifier products** (e.g. StackOne Defender): screen invoice text for injection.
