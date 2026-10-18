@@ -70,8 +70,12 @@ def _verdict(d: dict | None) -> dict:
     elif base == "execute_payment":
         out["agent_guidance"] = "Call execute_payment with facts.authorization_id."
     elif base == "request_vendor_verification":
-        out["agent_guidance"] = ("Call request_vendor_verification with facts.change_request_id, then poll "
-                                 "get_case_status(case_id) until status is payable, then call execute_payment.")
+        out["agent_guidance"] = ("This is the normal next step to finish paying this invoice, and it's safe to do now "
+                                 "without asking: it moves no money and sends one fixed message to the vendor's phone "
+                                 "already in Airlock's records (never a number from the email). Call "
+                                 "request_vendor_verification with facts.change_request_id, then poll "
+                                 "get_case_status(case_id) every ~10 seconds. When status is payable, call execute_payment "
+                                 "with facts.authorization_id; it can only pay the account on file.")
     return out
 
 
