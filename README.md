@@ -25,6 +25,9 @@ only from an approved order, the trust layer agents need before businesses let t
 
 <p align="center"><img src="docs/img/live.png" alt="Airlock control room: a hacked bank-change email was rejected after the vendor's phone said NO; $1,880 went to the account on file, $0 to the attacker's" width="100%"/></p>
 
+> **Built this weekend, all working:** everything in the video, screenshots and results below runs today. Future plans
+> are marked **Vision** or **Proposal**.
+
 > **In one screen:** a vendor's real mailbox asked us to pay a new bank account. Airlock held it, texted the vendor's
 > phone *already on file* through Inkbox, the vendor said **NO**, and the invoice was paid to the account on file:
 > **$1,880 → ••4821, $0 → ••9176.** Every message in that story is real email (Primitive), a real iMessage (Inkbox), and
@@ -116,7 +119,7 @@ page with the admin passcode, retype the new last 4, and wait out the cancel-bef
 
 ## Primitive track
 
-**Why Airlock is the strongest Primitive project:** email isn't a notification channel here. It's the medium two
+**Why Primitive is essential:** email isn't a notification channel here. It's the medium two
 companies' agents do business through, *and* the attack surface. Swap Primitive for a webhook and the product falls apart.
 
 ### Identities and what each one is allowed to do
@@ -173,7 +176,7 @@ ask, a forged agent, a duplicate, and one email packed with ten subtle tricks. I
 
 ## Inkbox track
 
-**Why Airlock is the strongest Inkbox project:** Inkbox is the one channel an email attacker can't touch, and Airlock
+**Why Inkbox is essential:** Inkbox is the one channel an email attacker can't touch, and Airlock
 uses it for exactly that. Two identities with different jobs, the same external/internal split a real company uses:
 
 | Identity | Faces | Does |
@@ -208,9 +211,9 @@ decision Airlock's policy makes about it.
 | Bound to | Acme Metals · ••4821 → ••9176 · registry v1 |
 | **Airlock's decision** | **Change rejected. The invoice can only pay the account on file.** |
 
-**Where we think this could go:** every agent that does something sensitive (moving money, changing records, sharing
+**Proposal (not an Inkbox feature today, and not part of this build):** every agent that does something sensitive (moving money, changing records, sharing
 data) has to rebuild this same flow: reach a trusted party out of band, bind the reply to the exact action, return
-evidence, keep a trail. As an Inkbox primitive it could look like:
+evidence, keep a trail. As an Inkbox primitive, it could look like this sketch:
 
 ```text
 request_verified_action(
@@ -221,7 +224,8 @@ request_verified_action(
 ```
 
 Combined with contact rules that restrict a verifier identity to registered numbers, even a fully fooled agent couldn't
-be tricked into "verifying" with an attacker. Airlock is a working prototype of that pattern.
+be tricked into "verifying" with an attacker. Airlock implements this pattern itself today (the code-bound reply,
+the evidence card, the registry-only contact); the sketch above is how it could become a reusable Inkbox API.
 
 ---
 
@@ -324,7 +328,9 @@ system is unbreakable.
 
 ---
 
-## What's next: agents that negotiate, not just pay
+## Vision (not built yet): agents that negotiate, not just pay
+
+> Everything above this section works today and is in the demo. This section is where Airlock goes next.
 
 Corvid shows the foundation: two companies' agents resolving a pricing dispute over email. The next step is real
 negotiation (counteroffers within each company's private limits), where agents can agree on terms but **cannot
@@ -337,7 +343,7 @@ flowchart LR
     SE --> RC["Reconcile<br/>both companies' agents update their books"]
 ```
 
-**The company:** start with autonomous accounts payable for mid-market finance teams (where business email compromise
+**The company we'd build:** start with autonomous accounts payable for mid-market finance teams (where business email compromise
 already hurts), expand into a network where buyers' and vendors' agents transact directly, and offer verified financial
 actions as infrastructure to any agent that needs to move money.
 
