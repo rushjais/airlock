@@ -239,7 +239,17 @@ def decision_card(case_id: str):
     return {"decision": d["decision"] if d else None, "reason": d["reason"] if d else None,
             "flags": d["flags"] if d else [], "next_action": d["next_action"] if d else None,
             "rows": rows, "authorization_id": facts.get("authorization_id"), "case_status": c["status"],
-            "verification": _verified_action(mid), "executed": _executed(facts, reg, accounts)}
+            "verification": _verified_action(mid), "executed": _executed(facts, reg, accounts),
+            "evidence": _evidence_safe(mid, facts)}
+
+
+def _evidence_safe(mid, facts):
+    from . import evidence
+    try:
+        return evidence.build(mid, facts)
+    except Exception as e:
+        log.warning("evidence failed: %s", e)
+        return None
 
 
 def _executed(facts: dict, reg: dict | None, asked_last4s: list[str]) -> dict | None:

@@ -17,7 +17,7 @@ def pool() -> ConnectionPool:
         _pool = ConnectionPool(
             config.need("DATABASE_URL"),
             min_size=1,
-            max_size=10,
+            max_size=6,  # API + executor + scripts must fit Supabase's 15-client session pooler
             # Supabase's pooler drops idle connections; check each one before use and recycle idle ones, so a
             # long-running process (the executor) never gets a dead connection mid-payment.
             check=ConnectionPool.check_connection,

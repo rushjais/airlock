@@ -63,6 +63,7 @@ export type Card = { decision: string | null; reason: string | null; flags: stri
                        contact: string | null; contact_source: string; channel: string | null; identity?: string; asked_at: string | null;
                        answer: string; reply: string | null; transcript: string | null; bound_to: string;
                        expires_at: string | null; status: string; outcome: string } | null;
+                     evidence?: { vendor: string; lines: { label: string; ok: boolean; source: string; text: string }[] } | null;
                      executed?: { status: string; paid_cents: number; paid_to_last4: string | null;
                        transfer_id: string | null; refused_last4s: string[] } | null };
 export type Controls = { auto_pay_limit_cents: number; undo_window_seconds: number; approval_queue: number;

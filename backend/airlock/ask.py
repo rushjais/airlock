@@ -24,10 +24,12 @@ MODEL = config.get("AIRLOCK_ASK_MODEL", "claude-sonnet-5-5")
 VENDOR_REPLY = re.compile(r"^\s*(yes\s*\d{6}|yes|no|nope|not us)\s*[.!]?\s*$", re.I)
 
 SYSTEM = """You are Airlock, the accounts-payable agent for Kiln Supply Co., answering the company admin by text.
-Answer ONLY from the snapshot below. Plain text, at most 2 short sentences (under 280 characters), no markdown. Lead with the answer. Use vendor names, invoice
-numbers, amounts and last-4 digits; never invent facts. If the snapshot doesn't say, say you don't know.
-You cannot pay, approve, reject, or change anything by text, and a text is never authorization. If asked to do any
-of that, say so in one sentence and, if the snapshot has an approval_link for it, give that link.
+The admin may be skeptical: back every fact with evidence from the company's records. Use the lookup tools (payment
+history, invoices, contracts, vendor registry, past emails, cases) instead of guessing, and put the source in brackets
+after each fact, e.g. "$1,445.00 on 2026-09-29 to ••4821 [payment history INV-1041]". If the records don't show it,
+say you couldn't find it. Plain text, at most 3 short sentences, no markdown; lead with the answer.
+You cannot pay, approve, reject, or change anything by text, and a text is never authorization. If asked to do any of
+that, say so in one sentence and, if the snapshot has an approval_link for it, give that link.
 If something needs the admin, say exactly what and why."""
 
 
@@ -63,13 +65,70 @@ def _snapshot() -> dict:
                          "after_rejected_change": company.get("after_rejected_change")}}
 
 
+TOOLS = [
+    {"name": "payment_history", "description": "Past invoices and Airlock payments for a vendor, newest first.",
+     "input_schema": {"type": "object", "properties": {"vendor": {"type": "string"}}, "required": ["vendor"]}},
+    {"name": "find_invoice", "description": "Look up an invoice number across history, emails and cases.",
+     "input_schema": {"type": "object", "properties": {"invoice_number": {"type": "string"}}, "required": ["invoice_number"]}},
+    {"name": "contract", "description": "The contract on file for a vendor (pricing, terms, allowed line items).",
+     "input_schema": {"type": "object", "properties": {"vendor": {"type": "string"}}, "required": ["vendor"]}},
+    {"name": "vendor_record", "description": "Vendor registry: account on file (last 4), registry version, contact.",
+     "input_schema": {"type": "object", "properties": {"vendor": {"type": "string"}}, "required": ["vendor"]}},
+    {"name": "past_emails", "description": "Recent emails from a vendor's domain with Airlock's decision on each.",
+     "input_schema": {"type": "object", "properties": {"vendor": {"type": "string"}}, "required": ["vendor"]}},
+]
+
+
+def _vendor(name: str) -> dict | None:
+    return db.one("select * from vendors where name ilike %s or id ilike %s order by name limit 1",
+                  f"%{name.strip()[:40]}%", f"%{name.strip()[:40]}%")
+
+
+def _tool(name: str, args: dict) -> dict:
+    """Read-only lookups. Nothing here can write, pay, approve or contact anyone."""
+    from . import evidence
+    if name == "find_invoice":
+        n = args.get("invoice_number", "").strip()[:40]
+        hist = db.all_rows("""select h.invoice_number, h.invoice_date, h.amount_cents, h.remit_last4, v.name
+                              from invoice_history h join vendors v on v.id=h.vendor_id where h.invoice_number ilike %s""", n)
+        cases = db.all_rows("""select c.id, c.subject, c.status, d.reason from cases c left join lateral (select reason from
+                               decisions where message_id=c.source_message_id order by created_at desc limit 1) d on true
+                               where c.subject ilike %s order by c.created_at desc limit 5""", f"%{n}%")
+        return {"source": "invoice history + cases", "history": hist, "cases": cases}
+    v = _vendor(args.get("vendor", ""))
+    if v is None:
+        return {"error": "no vendor by that name in the registry"}
+    if name == "payment_history":
+        return {"source": "invoice history + Airlock payments", "vendor": v["name"], "rows": evidence.history(v["id"], 12)}
+    if name == "contract":
+        return {"source": "contracts", "contract": db.one("select * from contracts where vendor_id=%s", v["id"])}
+    if name == "vendor_record":
+        return {"source": f"vendor registry v{v['registry_version']}", "name": v["name"],
+                "account_last4": v["destination_last4"], "registry_version": v["registry_version"],
+                "phone_last4": (v["registered_phone"] or "")[-4:], "email": v["registered_email"]}
+    if name == "past_emails":
+        return {"source": "inbox", "emails": db.all_rows(
+            """select m.subject, m.from_address, m.received_at, d.decision, d.reason from messages m left join lateral
+               (select decision, reason from decisions where message_id=m.id order by created_at desc limit 1) d on true
+               where m.from_domain=%s order by m.received_at desc limit 8""", v["registered_domain"])}
+    return {"error": "unknown tool"}
+
+
 def answer(question: str) -> str:
     client = anthropic.Anthropic(api_key=config.need("ANTHROPIC_API_KEY"), max_retries=2)
-    r = client.messages.create(
-        model=MODEL, max_tokens=400, system=SYSTEM + "\n\nSnapshot:\n" + json.dumps(_snapshot(), default=str),
-        messages=[{"role": "user", "content": question[:500]}])
-    text = "".join(b.text for b in r.content if b.type == "text").strip()
-    return text[:700] or "Sorry, I couldn't answer that."
+    messages = [{"role": "user", "content": question[:500]}]
+    system = SYSTEM + "\n\nCurrent snapshot:\n" + json.dumps(_snapshot(), default=str)
+    for _ in range(5):
+        r = client.messages.create(model=MODEL, max_tokens=600, system=system, tools=TOOLS, messages=messages)
+        uses = [b for b in r.content if b.type == "tool_use"]
+        if not uses:
+            text = "".join(b.text for b in r.content if b.type == "text").strip()
+            return text[:900] or "Sorry, I couldn't answer that."
+        messages.append({"role": "assistant", "content": r.content})
+        messages.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": u.id, "content": json.dumps(_tool(u.name, u.input), default=str)[:6000]}
+            for u in uses]})
+    return "I couldn't finish looking that up. Nothing was changed."
 
 
 def _shares_identity_with_verifier() -> bool:

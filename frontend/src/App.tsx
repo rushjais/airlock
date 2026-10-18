@@ -356,6 +356,24 @@ const WHY: Record<string, string> = {
   reader_unavailable: "Couldn't read the email safely, so nothing can pay. It will be retried.",
 };
 
+/* Evidence from the company's own records: what a skeptical human can check before trusting the agent. */
+function EvidenceBlock({ ev }: { ev: NonNullable<Card["evidence"]> }) {
+  return (
+    <div className="mt-5 rounded-lg border-2 border-line p-4">
+      <h3 className="text-[16px] font-bold mb-0.5">Evidence <span className="text-muted font-normal text-[13px]">· from {ev.vendor}'s records, not the email</span></h3>
+      <ul className="mt-2 space-y-2">
+        {ev.lines.map((l) => (
+          <li key={l.label} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 text-[14px]">
+            <span className={`font-bold ${l.ok ? "text-ok" : "text-bad"}`}>{l.ok ? "✓" : "✗"}</span>
+            <div><span className="font-semibold">{l.label}: </span>{l.text}
+              <span className="ml-1.5 num text-[11.5px] text-muted">[{l.source}]</span></div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /* What actually moved, from payment records: the email's ask on one side, the executed transfer on the other. */
 function Executed({ e }: { e: NonNullable<Card["executed"]> }) {
   return (
@@ -557,6 +575,7 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
         )}
       </dl>
       {card.executed && <Executed e={card.executed} />}
+      {card.evidence && <EvidenceBlock ev={card.evidence} />}
       {card.verification && <VerifiedAction v={card.verification} />}
       <p className="text-[13px] text-muted mt-6">Decided by deterministic code from the vendor registry and approved purchase orders. No model votes on pay or hold.</p>
     </section>

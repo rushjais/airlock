@@ -294,6 +294,11 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
         text += " Why it looked wrong: " + "; ".join(why) + "."
     if outcome.startswith("no"):
         text += f" I also warned {cr['name']} that the mailbox may be compromised."
+    try:
+        from . import evidence
+        text += evidence.one_liner(cr["source_message_id"], {"vendor_id": cr["vendor_id"]})
+    except Exception as e:
+        log.warning("evidence line skipped: %s", e)
     if _text_admin(text, subject):
         agents.post(case_id, "verifier", "action", "Briefed the admin: " + text.split(": ", 1)[1][:220],
                     send_email=False)
