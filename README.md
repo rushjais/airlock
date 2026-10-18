@@ -35,6 +35,23 @@ only from an approved order, the trust layer agents need before businesses let t
 
 ---
 
+## Made for agents
+
+The hackathon asks for something agents want. Airlock's users are agents: an AP agent that needs to pay invoices and
+can't be trusted with an open checkbook, and the other companies' agents it does business with.
+
+| What an agent needs | What Airlock gives it (all built) |
+|---|---|
+| **To get real work done, not just get blocked** | Every answer says what happened and what to do next: `status` (`verification_required` → `awaiting_vendor` → `payable` → `paid`), `next_action`, `case_id`, plain-English `agent_guidance`. A hold is a workflow the agent can finish. |
+| **Tools it can't hurt itself with** | No tool accepts a destination or an amount. A fooled agent has nowhere to put the attacker's account. Retrying with the same case can never pay twice. |
+| **To be usable by any agent** | An MCP server (mcp-use, on Manufact Cloud). Tested with Claude Desktop, unprompted: held → requested verification → polled until payable. |
+| **Its own identity to talk to the world** | Each agent has its own Primitive inbox and works cases in signed email threads; vendor checks and admin briefs go out from Inkbox identities. |
+| **To do business with other agents** | Corvid Software's billing agent (a separate company, its own books) disputes, reissues, gets paid and reconciles with Kiln's agents over email, with no humans. |
+| **A boundary that assumes it will be fooled** | Agents can read anything; authority comes only from records. Reader fooled 1/39 injection attacks, 0 unauthorized payments. |
+| **To ask a human only when it truly needs one** | The admin gets a brief only when a decision is needed, and can text questions back (answers cite sources). A text never approves money. |
+
+---
+
 ## Why this exists
 
 An employee at my dad's company got an email that looked exactly like it came from a major company they do business
