@@ -360,7 +360,7 @@ const WHY: Record<string, string> = {
 function EvidenceBlock({ ev }: { ev: NonNullable<Card["evidence"]> }) {
   return (
     <div className="mt-5 rounded-lg border-2 border-line p-4">
-      <h3 className="text-[16px] font-bold mb-0.5">Evidence <span className="text-muted font-normal text-[13px]">· from {ev.vendor}'s records, not the email</span></h3>
+      <h3 className="text-[16px] font-bold mb-0.5">Evidence <span className="text-muted font-normal text-[13px]">· from {ev.vendor} records, not the email</span></h3>
       <ul className="mt-2 space-y-2">
         {ev.lines.map((l) => (
           <li key={l.label} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 text-[14px]">

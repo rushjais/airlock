@@ -12,7 +12,7 @@ def _usd(c) -> str:
     return f"${(c or 0) / 100:,.2f}"
 
 
-def history(vendor_id: str, limit: int = 6) -> list[dict]:
+def history(vendor_id: str, limit: int = 6, exclude_obligation: str | None = None) -> list[dict]:
     """Past invoices (fixture history) plus payments Airlock made, newest first."""
     rows = [{"invoice": h["invoice_number"], "date": str(h["invoice_date"]), "amount_cents": h["amount_cents"],
              "to_last4": h["remit_last4"], "source": "invoice history"}
@@ -22,7 +22,8 @@ def history(vendor_id: str, limit: int = 6) -> list[dict]:
     for a in db.all_rows("""select a.amount_cents, a.created_at, a.stripe_transfer_id,
                                    coalesce(o.settled_invoice_number, o.po_number) as ref
                             from payment_authorizations a join obligations o on o.id=a.obligation_id
-                            where a.vendor_id=%s and a.status='succeeded'""", vendor_id):
+                            where a.vendor_id=%s and a.status='succeeded' and a.obligation_id is distinct from %s""",
+                            vendor_id, exclude_obligation):
         rows.append({"invoice": a["ref"] or "-", "date": a["created_at"].date().isoformat(),
                      "amount_cents": a["amount_cents"], "to_last4": v["destination_last4"] if v else "?",
                      "source": f"Airlock payment {a['stripe_transfer_id']}"})
@@ -38,7 +39,7 @@ def build(message_id, facts: dict) -> dict | None:
     if not v:
         return None
     lines: list[dict] = []
-    hist = history(vid)
+    hist = history(vid, exclude_obligation=facts.get("obligation_id"))  # never cite this payment as evidence for itself
     claimed = facts.get("claimed_cents")
     if hist:
         amounts = [h["amount_cents"] for h in hist]
@@ -77,7 +78,7 @@ def build(message_id, facts: dict) -> dict | None:
     lines.append({"label": "Where the money terms came from", "ok": True, "source": "Airlock policy",
                   "text": f"Amount from the approved order, destination from the registry (••{v['destination_last4']}). "
                           "Nothing from the email was used to decide where or how much."})
-    return {"vendor": v["name"], "lines": lines}
+    return {"vendor": v["name"] + ("'" if v["name"].endswith("s") else "'s"), "lines": lines}
 
 
 def one_liner(message_id, facts: dict) -> str:
