@@ -85,7 +85,7 @@ export default function Approve() {
         <section className="rounded-lg border-2 border-held p-6 mb-6">
           <h2 className="text-[20px] font-bold mb-3">Before you approve</h2>
           <ul className="space-y-2 mb-4 text-[17px]">
-            {d.flags.map((f) => <li key={f} className="text-held">{FLAG_TEXT[f] ?? f}</li>)}
+            {d.flags.map((f) => <li key={f} className="text-held">{FLAG_TEXT[f.split(":")[0]] ?? (f.startsWith("REVIEW:") ? `Model reviewer noticed: ${f.slice(7).toLowerCase().replace(/_/g, " ")} (advisory)` : f)}</li>)}
           </ul>
           <label className="flex items-start gap-3 text-[17px] mb-4">
             <input type="checkbox" className="mt-1.5 h-5 w-5" checked={ack} onChange={(e) => setAck(e.target.checked)} />

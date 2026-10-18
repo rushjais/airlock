@@ -43,10 +43,12 @@ const STATUS: Record<CaseRow["status"], { label: string; cls: string }> = {
 
 export default function App() {
   const [light, toggleTheme] = useTheme();
-  const [view, setView] = useState<"live" | "mail" | "results">("live");
+  // Deep links (?view=mail, ?case=<id>, ?tab=xray) for sharing a screen or capturing README screenshots.
+  const QS = new URLSearchParams(window.location.search);
+  const [view, setView] = useState<"live" | "mail" | "results">((QS.get("view") as "live" | "mail" | "results") || "live");
   const cases = usePoll(api.cases) ?? [];
-  const [picked, setPicked] = useState<string | null>(null);
-  const [follow, setFollow] = useState(true);
+  const [picked, setPicked] = useState<string | null>(QS.get("case"));
+  const [follow, setFollow] = useState(!QS.get("case"));
   const selected = follow ? cases[0]?.id ?? null : picked;
 
   return (
@@ -420,7 +422,8 @@ function fmt(v: string | number | null | undefined, money?: boolean) {
 
 /* Middle column: the decision, or the email itself under X-ray. */
 function Middle({ caseId }: { caseId: string | null }) {
-  const [tab, setTab] = useState<"decision" | "xray">("decision");
+  const [tab, setTab] = useState<"decision" | "xray">(
+    new URLSearchParams(window.location.search).get("tab") === "xray" ? "xray" : "decision");
   const t = (v: "decision" | "xray", label: string) => (
     <button onClick={() => setTab(v)} aria-pressed={tab === v}
       className={`px-3 py-1 rounded-md text-[14px] font-semibold ${tab === v ? "bg-text text-bg" : "text-muted hover:text-text"}`}>{label}</button>
@@ -538,6 +541,9 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
     <section className="min-h-0 overflow-y-auto rounded-lg border-2 border-line bg-panel p-6">
       <h2 className="text-[19px] font-bold mb-1">Decision</h2>
       <p className={`wide font-extrabold text-[48px] leading-none mb-5 ${word.cls}`}>{word.word}</p>
+      {/* Outcome first: what actually moved, and the out-of-band check, before the supporting detail. */}
+      {card.executed && <div className="-mt-2 mb-5"><Executed e={card.executed} /></div>}
+      {card.verification && <div className="-mt-2 mb-5"><VerifiedAction v={card.verification} /></div>}
 
       <table className="w-full text-[17px] mb-6 border-collapse">
         <thead>
@@ -574,9 +580,7 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
           </div>
         )}
       </dl>
-      {card.executed && <Executed e={card.executed} />}
       {card.evidence && <EvidenceBlock ev={card.evidence} />}
-      {card.verification && <VerifiedAction v={card.verification} />}
       <p className="text-[13px] text-muted mt-6">Decided by deterministic code from the vendor registry and approved purchase orders. No model votes on pay or hold.</p>
     </section>
   );

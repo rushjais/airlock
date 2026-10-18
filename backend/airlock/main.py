@@ -271,8 +271,8 @@ def _executed(facts: dict, reg: dict | None, asked_last4s: list[str]) -> dict | 
 def _contact_source(vendor_id: str) -> str:
     from . import inkbox_sync
     c = inkbox_sync.STATE["contacts"].get(vendor_id)
-    return (f"Inkbox contact card \"{c['name']}\", synced one-way from the vendor registry (never the email)"
-            if c else "vendor registry (never the email)")
+    return (f"Inkbox contact card \"{c['name']}\", synced one-way from the vendor registry, never the email"
+            if c else "vendor registry, never the email")
 
 
 def _verified_action(message_id) -> dict | None:
