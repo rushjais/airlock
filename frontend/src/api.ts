@@ -57,7 +57,7 @@ export type CardRow = { label: string; claim: string | number | null; record: st
 export type Card = { decision: string | null; reason: string | null; flags: string[]; next_action: string | null;
                      rows: CardRow[]; authorization_id?: string; case_status: string;
                      verification?: { action: string; vendor: string; from_last4: string; to_last4: string | null;
-                       contact: string | null; contact_source: string; channel: string | null; asked_at: string | null;
+                       contact: string | null; contact_source: string; channel: string | null; identity?: string; asked_at: string | null;
                        answer: string; reply: string | null; transcript: string | null; bound_to: string;
                        expires_at: string | null; status: string; outcome: string } | null;
                      executed?: { status: string; paid_cents: number; paid_to_last4: string | null;
@@ -76,6 +76,14 @@ export type MonthEnd = { active: boolean; running: boolean; launched: number; to
   paid: { count: number; cents: number }; stolen_cents: number; blocked: MEItem[]; held: MEItem[]; needs_you: MEItem[];
   resolved: number; digest: string | null };
 
+export type XSpan = { start: number; end: number; kind: string; note: string };
+export type XRayData = { subject: string | null; subject_spans: XSpan[]; body: string; body_spans: XSpan[];
+  attachments: { name: string; text: string; spans: XSpan[]; excerpt: string; excerpt_spans: XSpan[] }[];
+  sender: { address: string; domain: string; registered: boolean; vendor: string | null; authenticated: boolean | null;
+            imitates?: string; diff?: { text: string; changed: boolean }[] };
+  reply_to: string | null; reply_to_mismatch: boolean; claims: number; authority: number;
+  registry_last4: string | null; document_issuer: string | null };
+
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
   case: (id: string) => get<CaseDetail>(`/api/cases/${id}`),
@@ -87,6 +95,7 @@ export const api = {
   setAfterRejected: (value: "pay_on_file" | "hold") =>
     fetch("/api/controls/after-rejected-change", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value }) }).then((r) => r.ok),
+  xray: (id: string) => get<XRayData>(`/api/cases/${id}/xray`),
   monthEnd: () => fetch("/api/demo/monthend", { method: "POST" }).then((r) => r.ok),
   monthEndStatus: () => get<MonthEnd>("/api/monthend"),
   corvid: () => get<VendorBooks>("/api/vendor/corvid/books"),

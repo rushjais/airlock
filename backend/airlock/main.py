@@ -192,6 +192,16 @@ def summary():
     return {"company": company["name"] if company else "", "paid_cents": paid, "held_cents": held, "stolen_cents": stolen}
 
 
+@app.get("/api/cases/{case_id}/xray")
+def case_xray(case_id: str):
+    """The inbound email with what Airlock's deterministic checks found marked in place."""
+    from . import xray
+    x = xray.build(case_id)
+    if x is None:
+        raise HTTPException(404)
+    return x
+
+
 @app.get("/api/cases/{case_id}/card")
 def decision_card(case_id: str):
     """What the email claims (red) next to what the company's records say (green), and the rule that fired."""
@@ -269,6 +279,8 @@ def _verified_action(message_id) -> dict | None:
             "from_last4": cr["old_destination_last4"], "to_last4": cr["new_last4"],
             "contact": f"{cr['vendor']} phone on file ••{(ev.get('phone_on_file') or '')[-4:]}" if ev.get("phone_on_file") else None,
             "contact_source": "vendor registry (never the email)", "channel": ev.get("channel"),
+            "identity": "@" + ((config.get("INKBOX_HANDLE") or "airlock") if ev.get("channel") == "voice call"
+                               else (config.get("INKBOX_VERIFY_HANDLE") or config.get("INKBOX_HANDLE") or "airlock")),
             "asked_at": ev.get("verification_sent_at"), "answer": answer, "reply": reply,
             "transcript": (ev.get("transcript") or "")[:400] or None,
             "bound_to": f"{cr['vendor']} · ••{cr['old_destination_last4']} → ••{cr['new_last4']} · registry v{cr['base_registry_version']}",

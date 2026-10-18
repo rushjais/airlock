@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   api, usd, type Card, type CaseDetail, type CaseRow, type Controls, type ModeResult, type Money, type Post,
-  type MonthEnd, type Results, type Summary, type VendorBooks,
+  type MonthEnd, type Results, type Summary, type VendorBooks, type XRayData, type XSpan,
 } from "./api";
 
 const POLL_MS = 1500;
@@ -57,7 +57,7 @@ export default function App() {
         <main className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(300px,0.72fr)] gap-4 p-4 min-h-0">
           <Threads cases={cases} selected={selected} follow={follow}
                    onPick={(id) => { setPicked(id); setFollow(false); }} onFollow={() => setFollow(true)} />
-          <DecisionCard caseId={selected} />
+          <Middle caseId={selected} />
           <MoneyPanel cases={cases} />
         </main>
       )}
@@ -212,7 +212,9 @@ function Thread({ caseId }: { caseId: string | null }) {
   if (!detail) return <div className="p-5 text-muted text-[16px]">Pick a case to read its thread.</div>;
   return (
     <div className="overflow-y-auto min-h-0 px-5 py-4">
-      <p className="num text-[13px] text-muted mb-2 truncate">{detail.case.id}@{INBOX_DOMAIN}</p>
+      <p className="flex items-center gap-2 text-[13px] text-muted mb-2 min-w-0">
+        <span className="num truncate">{detail.case.id}@{INBOX_DOMAIN}</span>
+        <span className="shrink-0 rounded px-1.5 py-px border border-line font-semibold">email via Primitive</span></p>
       <RoutingStrip posts={detail.posts} status={detail.case.status} />
       <ol className="space-y-4">
         {detail.posts.map((post, i) => <PostView key={`${detail.case.id}-${i}`} post={post} caseId={detail.case.id} />)}
@@ -377,7 +379,7 @@ function VerifiedAction({ v }: { v: NonNullable<Card["verification"]> }) {
   return (
     <div className="mt-6 rounded-lg border-2 border-line bg-raised p-4">
       <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h3 className="text-[16px] font-bold">Verified action <span className="text-muted font-normal text-[13px]">· evidence, not authority</span></h3>
+        <h3 className="text-[16px] font-bold">Verified action <span className="text-muted font-normal text-[13px]">· via Inkbox {v.identity} · evidence, not authority</span></h3>
         <span className={`num text-[13px] font-bold uppercase ${tone}`}>{v.answer === "waiting" ? "waiting…" : `vendor: ${v.answer}`}</span>
       </div>
       <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px]">
@@ -396,6 +398,103 @@ function VerifiedAction({ v }: { v: NonNullable<Card["verification"]> }) {
 function fmt(v: string | number | null | undefined, money?: boolean) {
   if (v === null || v === undefined) return "-";
   return money && typeof v === "number" ? usd(v) : String(v);
+}
+
+/* Middle column: the decision, or the email itself under X-ray. */
+function Middle({ caseId }: { caseId: string | null }) {
+  const [tab, setTab] = useState<"decision" | "xray">("decision");
+  const t = (v: "decision" | "xray", label: string) => (
+    <button onClick={() => setTab(v)} aria-pressed={tab === v}
+      className={`px-3 py-1 rounded-md text-[14px] font-semibold ${tab === v ? "bg-text text-bg" : "text-muted hover:text-text"}`}>{label}</button>
+  );
+  return (
+    <div className="min-h-0 grid grid-rows-[auto_minmax(0,1fr)] gap-2">
+      <div className="flex gap-1 rounded-lg border-2 border-line bg-panel p-1 w-fit">{t("decision", "Decision")}{t("xray", "Email X-ray")}</div>
+      {tab === "decision" ? <DecisionCard caseId={caseId} /> : <XRay caseId={caseId} />}
+    </div>
+  );
+}
+
+const MARK: Record<string, string> = {
+  agent: "bg-bad-soft text-bad", data: "bg-bad-soft text-bad", bank: "bg-held-soft text-held",
+  urgency: "bg-held-soft text-held", account: "bg-bad-soft text-bad underline decoration-2 decoration-bad",
+  account_ok: "bg-ok-soft text-ok",
+};
+
+function Marked({ text, spans, on }: { text: string; spans: XSpan[]; on: boolean }) {
+  if (!on || !spans.length) return <>{text}</>;
+  const out: React.ReactNode[] = [];
+  const noted = new Set<string>();
+  let at = 0;
+  spans.forEach((sp, i) => {
+    if (sp.start > at) out.push(text.slice(at, sp.start));
+    const showNote = sp.kind.startsWith("account") || !noted.has(sp.note);
+    noted.add(sp.note);
+    out.push(<mark key={i} className={`rounded px-0.5 ${MARK[sp.kind] ?? ""}`}>{text.slice(sp.start, sp.end)}
+      {showNote && <span className="ml-1 align-super num text-[10.5px] font-semibold not-italic">{sp.note}</span>}</mark>);
+    at = sp.end;
+  });
+  out.push(text.slice(at));
+  return <>{out}</>;
+}
+
+function XRay({ caseId }: { caseId: string | null }) {
+  const x = usePoll<XRayData | null>(() => (caseId ? api.xray(caseId) : Promise.resolve(null)), [caseId]);
+  const [on, setOn] = useState(true);
+  if (!x) return <section className="rounded-lg border-2 border-line bg-panel p-6 text-muted text-[16px]">Pick a case to see its email.</section>;
+  const hits = x.subject_spans.length + x.body_spans.length + x.attachments.reduce((n, a) => n + a.spans.length, 0)
+             + (x.sender.diff ? 1 : 0) + (x.reply_to_mismatch ? 1 : 0);
+  const badge = (txt: string, cls: string) => <span className={`rounded px-2 py-0.5 text-[12px] font-semibold ${cls}`}>{txt}</span>;
+  return (
+    <section className="min-h-0 overflow-y-auto rounded-lg border-2 border-line bg-panel p-6">
+      <div className="flex items-baseline justify-between gap-3 mb-1">
+        <h2 className="text-[19px] font-bold">Email X-ray</h2>
+        <div className="flex gap-1 rounded-md border-2 border-line p-0.5">
+          <button onClick={() => setOn(false)} className={`px-2.5 py-0.5 rounded text-[13px] font-semibold ${!on ? "bg-text text-bg" : "text-muted"}`}>As received</button>
+          <button onClick={() => setOn(true)} className={`px-2.5 py-0.5 rounded text-[13px] font-semibold ${on ? "bg-text text-bg" : "text-muted"}`}>X-ray</button>
+        </div>
+      </div>
+      <p className="text-[13px] text-muted mb-4">Received by Primitive at ap@. {on ? `${hits} things Airlock's checks marked, from vendor records and fixed rules; no model involved.` : "What a human or a naive agent sees."}</p>
+
+      <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px] mb-4">
+        <dt className="text-muted">From</dt>
+        <dd className="num [overflow-wrap:anywhere]">
+          {on && x.sender.diff ? <>{x.sender.address.split("@")[0]}@{x.sender.diff.map((p, i) =>
+            <span key={i} className={p.changed ? "bg-bad-soft text-bad font-bold rounded px-0.5" : ""}>{p.text}</span>)}</> : x.sender.address}
+          {on && <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+            {x.sender.registered ? badge(`registered: ${x.sender.vendor}`, "bg-ok-soft text-ok")
+              : x.sender.imitates ? badge(`imitates ${x.sender.vendor} (registered: ${x.sender.imitates})`, "bg-bad-soft text-bad") : badge("not a registered vendor", "bg-held-soft text-held")}
+            {x.sender.authenticated === true && badge("Primitive sender check: pass", "bg-ok-soft text-ok")}
+            {x.sender.authenticated === false && badge("Primitive sender check: fail", "bg-bad-soft text-bad")}
+          </span>}
+        </dd>
+        {x.reply_to && <><dt className="text-muted">Reply-To</dt><dd className="num [overflow-wrap:anywhere]">{x.reply_to}
+          {on && x.reply_to_mismatch && <span className="ml-2">{badge("Reply-To ≠ From", "bg-bad-soft text-bad")}</span>}</dd></>}
+        <dt className="text-muted">Subject</dt><dd><Marked text={x.subject ?? ""} spans={x.subject_spans} on={on} /></dd>
+      </dl>
+
+      <div className="font-letter text-[16.5px] leading-[1.6] whitespace-pre-wrap rounded-md border border-line bg-raised p-4 mb-3">
+        <Marked text={x.body} spans={x.body_spans} on={on} />
+      </div>
+      {x.attachments.map((a) => (
+        <div key={a.name} className="mb-3">
+          <div className="flex items-center gap-2 text-[13px] text-muted mb-1">📎 <span className="num">{a.name}</span>
+            {on && badge("EXTERNAL_ATTACHMENT · only the tool-less reader sees it", "bg-held-soft text-held")}
+            {on && x.document_issuer && badge(`this is ${x.document_issuer}'s invoice`, "bg-bad-soft text-bad")}</div>
+          <div className="num text-[13px] leading-[1.6] whitespace-pre-wrap rounded-md border border-dashed border-line p-3 max-h-64 overflow-y-auto">
+            {on && a.excerpt_spans?.length
+              ? <><div className="text-[11px] uppercase tracking-wider text-muted mb-1 font-sans">Marked lines only · switch to "As received" for the full file</div>
+                  <Marked text={a.excerpt} spans={a.excerpt_spans} on /></>
+              : <Marked text={a.text} spans={a.spans} on={on} />}
+          </div>
+        </div>
+      ))}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border-2 border-line px-4 py-3"><div className="text-[13px] text-muted">Claims from this email</div><div className="num text-[26px] font-bold">{x.claims}</div></div>
+        <div className="rounded-lg border-2 border-ok px-4 py-3"><div className="text-[13px] text-muted">Authority from this email</div><div className="num text-[26px] font-bold text-ok">{x.authority}</div></div>
+      </div>
+    </section>
+  );
 }
 
 function DecisionCard({ caseId }: { caseId: string | null }) {
