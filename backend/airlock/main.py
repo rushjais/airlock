@@ -430,11 +430,16 @@ def demo_attempts_clear(request: Request):
 def public_attempts():
     """Public, read-only: the 'try to steal from Airlock' board. Handles only, never addresses or email text."""
     from . import public
+    if not public.enabled():
+        raise HTTPException(404)
     return public.board()
 
 
 @app.get("/attempts", response_class=HTMLResponse)
 def attempts_page():
+    from . import public
+    if not public.enabled():
+        raise HTTPException(404)
     return (pathlib.Path(__file__).parent / "attempts.html").read_text()
 
 
