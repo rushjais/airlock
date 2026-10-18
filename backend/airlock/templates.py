@@ -24,6 +24,10 @@ TEMPLATES = {
     "ask_vendor_to_resend": (
         "Hi {vendor},\n\nYour email is about {invoice}, but the attached invoice is from {issuer}, not {vendor}. "
         "Nothing has been paid. Please reply with your own invoice attached.\n\nKiln Supply Co. Accounts Payable (Airlock)"),
+    "public_ack": (
+        "Hi,\n\nAirlock received your email and logged the attempt on the public board: {board}\n"
+        "Nothing in an email can move money here: where payments go comes from vendor records, and how much from "
+        "approved orders. (Demo company, Stripe test mode.)\n\nKiln Supply Co. Accounts Payable (Airlock)"),
     "verification_pending": (
         "Hi {vendor},\n\nWe received a request to change where we send your payments. For your protection we "
         "never change payment details based on an email. We'll confirm through the phone number we already have "

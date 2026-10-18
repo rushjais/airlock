@@ -1,6 +1,8 @@
 import os
 
 os.environ["AIRLOCK_DB_SCHEMA"] = "airlock_test"  # set before airlock.config is imported
+os.environ["AIRLOCK_PUBLIC_MODE"] = "0"
+os.environ["AIRLOCK_INTAKE_PAUSED"] = "0"
 
 """Tests run against the real Supabase database (reseeded per test). Stripe is stubbed unless a test says otherwise."""
 import threading

@@ -26,7 +26,14 @@ def execute_payment(authorization_id: str) -> dict:
 
 
 def _reply(message_id: str, template: str, **values) -> dict:
-    msg = db.one("select provider_message_id, from_address from messages where id=%s", message_id)
+    msg = db.one("select provider_message_id, from_address, from_domain, sender_authenticated from messages where id=%s",
+                 message_id)
+    registered = db.one("select 1 from vendors where registered_domain=%s", msg["from_domain"])
+    if not registered:  # invariant 12: outsiders get at most one templated acknowledgment a day, never vendor mail
+        if template != "public_ack" or not msg["sender_authenticated"] or db.one(
+                """select 1 from outbound_messages where to_address=%s and template='public_ack'
+                   and created_at > now() - interval '1 day'""", msg["from_address"]):
+            return {"ok": False, "skipped": "sender is not a registered vendor"}
     body = render(template, **values)
     if db.one("""select 1 from outbound_messages where to_address=%s and template=%s and body=%s
                  and created_at > now() - interval '1 hour'""", msg["from_address"], template, body):
@@ -291,8 +298,17 @@ def process(message_id: str) -> dict:
 
 
 def _process_locked(message_id: str) -> dict:
+    from . import public
+    why = public.gate(message_id)
+    if why:  # kill switch or per-sender rate limit: stored, logged, not processed
+        public.record(message_id, None, None, rule=why)
+        log.info("not processing %s: %s", message_id, why)
+        return {"decision": "skipped", "reason": why}
     try:
-        reader.read(message_id)
+        if public.model_budget_ok(message_id):
+            reader.read(message_id)
+        else:
+            public.regex_read(message_id)
     except Exception as e:  # fail safe: without claims nothing can be authorized; show it as held
         m = db.one("select from_address, subject from messages where id=%s", message_id)
         case_id = agents.open_case(message_id, {"from_domain": m["from_address"].split("@")[-1]}, None)
@@ -308,6 +324,16 @@ def _process_locked(message_id: str) -> dict:
     case_id = agents.open_case(message_id, facts, vendor["name"] if vendor else None)
     agents.post(case_id, "intake", "open", _intake_text(message_id, facts))
     agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
-    _treasurer_turn(case_id, message_id, verdict)
+    if public.enabled() and not facts.get("vendor_id"):
+        # Public mode, unregistered sender: nothing for the Treasurer to do (and no model spend). One templated
+        # acknowledgment at most, pointing at the public board.
+        db.one("update cases set status=%s where id=%s returning id",
+               "denied" if verdict["decision"] == "deny" else "held", case_id)
+        board = config.get("PUBLIC_BASE_URL")
+        if board:
+            _reply(message_id, "public_ack", board=f"{board.rstrip('/')}/attempts")
+    else:
+        _treasurer_turn(case_id, message_id, verdict)
+    public.record(message_id, verdict, case_id)
     log.info("case %s: %s (%s)", case_id, verdict["decision"], verdict["reason"])
     return {**verdict, "case_id": case_id}

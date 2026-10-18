@@ -89,6 +89,7 @@ create table message_raw (
   message_id uuid primary key references messages(id) on delete cascade,
   body_text text,
   body_html text,
+  from_header text,                           -- display name + address as sent (the public board shows a handle only)
   attachments jsonb not null default '[]'     -- [{filename, content_type, size_bytes, sha256, text}]
 );
 

@@ -37,6 +37,9 @@ def send_code(change_request_id: str) -> dict:
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
     if cr["status"] != "pending_verification":
         return {"ok": False, "reason": f"change_request_{cr['status']}"}
+    from . import public
+    if not public.verification_budget_ok():  # public mode: at most 3 phone checks an hour
+        return {"ok": False, "reason": "verification_rate_limited"}
     # One contact per change request, claimed atomically: a repeated tool call can't text the vendor twice
     # (a second text would also replace the first code).
     claimed = db.one("""update change_requests set evidence = evidence || jsonb_build_object('contact_claimed_at', now())

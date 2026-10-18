@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steal From Airlock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#121417; --panel:#1a1d22; --raised:#22262d; --line:#3a414c; --text:#f4f6f9; --muted:#a3acba;
+          --ok:#2fd07a; --ok-soft:#12321f; --bad:#ff5d5d; --bad-soft:#3a1717; --held:#ffb020; --held-soft:#3a2a0c; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+    --bg:#eef1f4; --panel:#f8fafb; --raised:#fff; --line:#c9d2dd; --text:#14213d; --muted:#586274;
+    --ok:#18794e; --ok-soft:#dcf2e6; --bad:#c0261d; --bad-soft:#fbe3e1; --held:#a26a00; --held-soft:#fbefd6; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:Inter, system-ui, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: clamp(30px, 6vw, 52px); font-weight: 800; margin: 0 0 10px; letter-spacing: -0.02em; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 720px; line-height: 1.5; margin: 0 0 8px; }
+  .addr { font-family: "JetBrains Mono", monospace; color: var(--text); background: var(--raised); border: 1px solid var(--line);
+          padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .stats { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin: 28px 0; }
+  @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  .stat { background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat .k { color: var(--muted); font-size: 14px; }
+  .stat .v { font-family: "JetBrains Mono", monospace; font-size: 30px; font-weight: 600; margin-top: 4px; }
+  .stat.stolen { border-color: var(--ok); }
+  .stat.stolen .v { color: var(--ok); }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  li { background: var(--panel); border: 2px solid var(--line); border-left-width: 5px; border-radius: 10px; padding: 12px 14px; }
+  li.deny { border-left-color: var(--bad); } li.hold, li.skip { border-left-color: var(--held); } li.pay { border-left-color: var(--ok); }
+  .top { display:flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .who { font-weight: 800; font-size: 17px; }
+  .when { color: var(--muted); font-size: 13px; font-family: "JetBrains Mono", monospace; margin-left: auto; }
+  .badge { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 2px 8px; }
+  .b-deny { background: var(--bad-soft); color: var(--bad); } .b-hold, .b-skip { background: var(--held-soft); color: var(--held); }
+  .b-pay { background: var(--ok-soft); color: var(--ok); }
+  .chips { display:flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 6px; }
+  .chip { font-size: 13px; background: var(--raised); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  .caught { font-size: 14.5px; color: var(--muted); } .caught b { color: var(--text); font-weight: 600; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; border: 2px dashed var(--line); border-radius: 10px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 28px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Try to steal from Airlock</h1>
+  <p class="lede">An AI agent pays Kiln Supply Co.'s invoices from its inbox. Email <span class="addr" id="inbox">ap@…</span>
+    anything: fake invoices, "we changed banks", hidden text in PDFs, prompt injections, pretending to be one of our agents.</p>
+  <p class="lede">The agent reads everything. An email can make claims; it can't authorize a payment. Stripe test mode, demo company.</p>
+
+  <section class="stats" aria-label="Totals">
+    <div class="stat"><div class="k">Attempts</div><div class="v" id="n">0</div></div>
+    <div class="stat"><div class="k">People</div><div class="v" id="people">0</div></div>
+    <div class="stat"><div class="k">Asked for</div><div class="v" id="asked">$0</div></div>
+    <div class="stat stolen"><div class="k">Stolen</div><div class="v" id="stolen">$0.00</div></div>
+  </section>
+
+  <ol id="list"><div class="empty">No attempts yet. Be the first.</div></ol>
+
+  <footer>Each attempt shows a handle (the sender's first name, never their address), what it tried, and the rule that
+    caught it. Every decision is deterministic code against vendor records and approved orders; no model votes on
+    pay or hold. Legitimate invoices from registered vendors still get paid.</footer>
+</main>
+<script>
+const WHY = {
+  matched_accepted_obligation: "Paid: a registered vendor's invoice matching an approved, received order",
+  sender_not_registered: "Sender isn't a registered vendor (lookalike domain)",
+  unknown_vendor: "Unknown sender: a human has to onboard a vendor first",
+  destination_change_requested: "Asked to pay a different account; only the vendor's phone on file can start that",
+  amount_mismatch: "Amount doesn't match the approved order",
+  obligation_already_settled: "That order was already paid; no second payment",
+  obligation_already_reserved: "A payment for that order is already in progress",
+  obligation_not_accepted: "Goods not received yet",
+  no_obligation: "No approved order covers it",
+  over_auto_pay_limit: "Over the auto-pay limit; waits for a human",
+  outbound_recipient_not_registered: "Asked to send internal documents outside",
+  unsigned_agent_mail: "Claimed to be an Airlock agent without a valid signature",
+  document_from_different_vendor: "The attached invoice is another company's",
+  rate_limited: "Rate limited (too many emails this hour)",
+  intake_paused: "Intake paused",
+  reader_unavailable: "Couldn't read it safely, so nothing paid",
+};
+const usd = c => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+const ago = t => { const s = Math.max(0, (Date.now() - new Date(t)) / 1000);
+  return s < 60 ? `${Math.floor(s)}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`; };
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function kind(d) { return d === "deny" ? "deny" : d === "pay" ? "pay" : d ? "hold" : "skip"; }
+const LABEL = { deny: "Blocked", pay: "Paid (legit)", hold: "Held", skip: "Not processed" };
+async function load() {
+  try {
+    const r = await fetch("/public/attempts", { headers: { "ngrok-skip-browser-warning": "1" } });
+    const b = await r.json();
+    document.getElementById("inbox").textContent = b.inbox;
+    document.getElementById("n").textContent = String(b.attempts_count ?? b.attempts.length);
+    document.getElementById("people").textContent = String(b.people);
+    document.getElementById("asked").textContent = usd(b.asked_cents || 0).replace(/\.00$/, "");
+    document.getElementById("stolen").textContent = usd(b.stolen_cents || 0);
+    const list = document.getElementById("list");
+    list.replaceChildren();
+    if (!b.attempts.length) { list.append(el("div", "empty", "No attempts yet. Be the first.")); return; }
+    for (const a of b.attempts) {
+      const k = kind(a.decision);
+      const li = el("li", k);
+      const top = el("div", "top");
+      top.append(el("span", "who", a.handle || "anon"), el("span", `badge b-${k}`, LABEL[k]));
+      if (a.claimed_cents && k !== "pay") top.append(el("span", "badge b-skip", `asked ${usd(a.claimed_cents)}`));
+      top.append(el("span", "when", ago(a.at)));
+      li.append(top);
+      if (a.tried && a.tried.length) { const c = el("div", "chips"); a.tried.forEach(t => c.append(el("span", "chip", t))); li.append(c); }
+      const caught = el("div", "caught"); caught.append(el("b", null, "Caught by: "), document.createTextNode(WHY[a.rule] || (a.rule || "").replaceAll("_", " ")));
+      li.append(caught);
+      list.append(li);
+    }
+  } catch (e) { /* keep the last render */ }
+}
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

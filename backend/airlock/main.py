@@ -4,9 +4,11 @@
 """
 import json
 import logging
+import pathlib
 from typing import Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from email.utils import parseaddr
@@ -68,6 +70,9 @@ async def primitive_webhook(request: Request, background: BackgroundTasks):
 def _forged_agent_mail(message_id: str, from_addr: str, rcpt: str, body: str) -> None:
     """An unsigned email addressed to an agent. It is a claim like any other email: it cannot authorize anything.
     Shown as its own case so the screen makes the point."""
+    from . import public
+    if public.gate(message_id):
+        return
     import re
     import uuid
     claims_to_be = from_addr.split("@")[0] if from_addr.endswith("@" + config.INBOX_DOMAIN) else None
@@ -91,6 +96,9 @@ def _forged_agent_mail(message_id: str, from_addr: str, rcpt: str, body: str) ->
               values (%s,'unsigned_agent_mail',%s,'deny','unsigned_agent_mail',%s,%s,'none') returning id""",
            message_id, case_id, ["FORGED_AGENT_SENDER"] if claims_to_be else ["UNSIGNED_AGENT_MAIL"],
            json.dumps({"claims_to_be": who, "accounts_requested": [a.strip() for a in accounts]}))
+    from . import public
+    public.record(message_id, {"decision": "deny", "reason": "unsigned_agent_mail",
+                               "flags": ["FORGED_AGENT_SENDER"] if claims_to_be else ["UNSIGNED_AGENT_MAIL"]}, case_id)
     log.warning("forged/unsigned agent mail to %s from %s -> case %s", rcpt, from_addr, case_id)
 
 
@@ -350,8 +358,9 @@ def approval_reconfirm(cr_id: str, body: AuthBody):
 def _start_workers():
     approvals.start_release_worker()
     _resume_vendor_listeners()
-    from . import ask
+    from . import ask, public
     ask.start()
+    public.ensure()
 
 
 def _resume_vendor_listeners() -> None:
@@ -391,6 +400,42 @@ def demo_vendor_dispute(request: Request):
         raise HTTPException(403, "only available locally")
     from . import vendor_agent
     return vendor_agent.kickoff()
+
+
+@app.post("/api/demo/intake/{state}")
+def demo_intake(state: str, request: Request):
+    """Local-only kill switch for public mode: 'pause' stores mail without processing it; 'resume' undoes it."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "only available locally")
+    if state not in ("pause", "resume"):
+        raise HTTPException(404)
+    import os
+    os.environ["AIRLOCK_INTAKE_PAUSED"] = "1" if state == "pause" else "0"
+    return {"ok": True, "intake_paused": state == "pause"}
+
+
+@app.post("/api/demo/attempts/clear")
+def demo_attempts_clear(request: Request):
+    """Local-only: wipe the public attempts board (e.g. after testing)."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "only available locally")
+    from . import public
+    public.ensure()
+    with db.tx() as conn:
+        conn.execute(f"truncate {public.SCHEMA}.attempts")
+    return {"ok": True}
+
+
+@app.get("/public/attempts")
+def public_attempts():
+    """Public, read-only: the 'try to steal from Airlock' board. Handles only, never addresses or email text."""
+    from . import public
+    return public.board()
+
+
+@app.get("/attempts", response_class=HTMLResponse)
+def attempts_page():
+    return (pathlib.Path(__file__).parent / "attempts.html").read_text()
 
 
 @app.get("/api/vendor/corvid/books")

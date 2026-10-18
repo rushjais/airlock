@@ -96,6 +96,6 @@ def store(msg: InboundEmail) -> tuple[str, bool]:
             return str(existing["id"]), False
         atts = [{"filename": a.filename, "content_type": a.content_type, "size_bytes": len(a.data),
                  "sha256": a.sha256, "text": a.text()} for a in msg.attachments]
-        conn.execute("insert into message_raw (message_id, body_text, body_html, attachments) values (%s,%s,%s,%s)",
-                     (row["id"], msg.body_text, msg.body_html, json.dumps(atts)))
+        conn.execute("insert into message_raw (message_id, body_text, body_html, from_header, attachments) "
+                     "values (%s,%s,%s,%s,%s)", (row["id"], msg.body_text, msg.body_html, msg.from_header, json.dumps(atts)))
         return str(row["id"]), True
