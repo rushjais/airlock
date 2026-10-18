@@ -161,6 +161,8 @@ const WHO: Record<string, { name: string; role: string }> = {
   external: { name: "Outside agent", role: "connected through Airlock's MCP server" },
   vendor: { name: "Vendor's agent", role: "Corvid Software's billing agent, by email" },
   unverified: { name: "Unsigned message", role: "not from an Airlock agent" },
+  inbound: { name: "Inbound email", role: "arrived at Kiln's AP inbox" },
+  outbound: { name: "Reply to vendor", role: "Kiln AP, from a template" },
 };
 
 function Threads(p: { cases: CaseRow[]; selected: string | null; follow: boolean; onPick: (id: string) => void; onFollow: () => void }) {
@@ -205,7 +207,8 @@ function Thread({ caseId }: { caseId: string | null }) {
   if (!detail) return <div className="p-5 text-muted text-[16px]">Pick a case to read its thread.</div>;
   return (
     <div className="overflow-y-auto min-h-0 px-5 py-4">
-      <p className="num text-[13px] text-muted mb-4 truncate">{detail.case.id}@{INBOX_DOMAIN}</p>
+      <p className="num text-[13px] text-muted mb-2 truncate">{detail.case.id}@{INBOX_DOMAIN}</p>
+      <RoutingStrip posts={detail.posts} status={detail.case.status} />
       <ol className="space-y-4">
         {detail.posts.map((post, i) => <PostView key={`${detail.case.id}-${i}`} post={post} caseId={detail.case.id} />)}
       </ol>
@@ -214,17 +217,58 @@ function Thread({ caseId }: { caseId: string | null }) {
   );
 }
 
-function PostView({ post, caseId }: { post: Post; caseId: string }) {
+/* Who handed the case to whom, lit up as the agents post (the email traffic, at a glance). */
+function RoutingStrip({ posts, status }: { posts: Post[]; status: CaseRow["status"] }) {
+  const has = (a: string) => posts.some((p) => p.author === a);
+  const verdict = posts.filter((p) => p.author === "auditor").map((p) => p.body.split(":")[0]).pop();
+  const vTone = verdict === "APPROVED" ? "ok" : verdict === "DENIED" || verdict === "IGNORED" ? "bad" : verdict ? "held" : "";
+  const end = status === "paid" ? { label: "Stripe ✓", tone: "ok" } : status === "denied" ? { label: "Blocked", tone: "bad" }
+            : status === "held" || status === "needs_approval" ? { label: "Held", tone: "held" }
+            : status === "resolved" ? { label: "Resolved", tone: "ok" } : null;
+  const nodes: { label: string; on: boolean; tone?: string }[] = [
+    { label: has("unverified") ? "Forged mail" : "Email", on: has("inbound") || has("unverified"), tone: "bad" },
+    { label: "intake@", on: has("intake") },
+    { label: "auditor@", on: !!verdict, tone: vTone },
+    ...(has("verifier") ? [{ label: "verifier@ → phone", on: true }] : []),
+    { label: "treasurer@", on: has("treasurer") },
+    ...(has("outbound") ? [{ label: "reply to vendor", on: true }] : []),
+    ...(end ? [{ label: end.label, on: true, tone: end.tone }] : []),
+  ];
+  const cls = (n: { on: boolean; tone?: string }) => !n.on ? "border-line text-muted opacity-50"
+    : n.tone === "ok" ? "border-ok text-ok bg-ok-soft" : n.tone === "bad" ? "border-bad text-bad bg-bad-soft"
+    : n.tone === "held" ? "border-held text-held bg-held-soft" : "border-text/40 text-text bg-raised";
+  return (
+    <ol aria-label="How this case moved between agents" className="mb-4 flex flex-wrap items-center gap-x-1 gap-y-1.5">
+      {nodes.map((n, i) => (
+        <li key={n.label + i} className="flex items-center gap-1">
+          {i > 0 && <span className={`text-[12px] ${n.on ? "text-muted" : "text-line"}`}>→</span>}
+          <span className={`num rounded-md border px-2 py-0.5 text-[12px] font-semibold transition-colors duration-500 ${cls(n)}`}>{n.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function short(addr?: string | null) {
+  if (!addr) return "";
+  return addr.endsWith(`@${INBOX_DOMAIN}`) ? addr.replace(`@${INBOX_DOMAIN}`, "@").replace(/^(case-[a-z0-9-]{0,14}).*@$/, "$1…@") : addr;
+}
+
+function PostView({ post }: { post: Post; caseId: string }) {
   const who = WHO[post.author] ?? { name: post.author, role: "" };
+  const env = post.envelope;
   const isCode = post.author === "auditor";
-  const isAgent = AGENTS.includes(post.author);
+  const isInbound = post.author === "inbound";
+  const isOut = post.author === "outbound";
   const verdict = isCode ? post.body.split(":")[0] : null;
   const edge = verdict === "APPROVED" ? "border-ok" : verdict === "DENIED" ? "border-bad" : verdict ? "border-held"
-             : post.author === "unverified" ? "border-bad" : "border-line";
-  const cc = AGENTS.filter((a) => a !== post.author).map((a) => `${a}@`).join(", ");
+             : post.author === "unverified" || isInbound ? "border-bad" : isOut ? "border-muted" : "border-line";
   const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);
   const long = !isCode && post.body.length > 360;
-  const short = post.body.slice(0, post.body.lastIndexOf(" ", 260) > 0 ? post.body.lastIndexOf(" ", 260) : 260) + "…";
+  const cut = post.body.lastIndexOf(" ", 260);
+  const shortBody = post.body.slice(0, cut > 0 ? cut : 260) + "…";
+  const atts = env?.attachments ?? [];
   return (
     <li className={`border-l-4 ${edge} pl-4 pr-2 py-1 ${isFresh(post.created_at) ? "fresh" : ""}`}>
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
@@ -232,17 +276,41 @@ function PostView({ post, caseId }: { post: Post; caseId: string }) {
         <span className="text-[13px] text-muted">{who.role}</span>
         <span className="num text-[13px] text-muted ml-auto">{time(post.created_at)}</span>
       </div>
-      {isAgent && (
-        <p className="num text-[12px] text-muted mb-1.5 truncate">
-          {post.author}@ to {caseId.slice(0, 18)}…@ cc {cc}
-        </p>
+      {env?.from && (
+        <button onClick={() => setOpen(!open)} aria-expanded={open}
+                className="group flex w-full items-center gap-2 text-left num text-[12px] text-muted mb-1.5 hover:text-text">
+          <span className="truncate">{short(env.from)} → {short(env.to)}{env.cc.length ? ` · cc ${env.cc.map(short).join(", ")}` : ""}</span>
+          {env.signed && <span className="shrink-0 rounded px-1.5 py-px bg-ok-soft text-ok font-semibold">signed</span>}
+          {isInbound && <span className="shrink-0 rounded px-1.5 py-px bg-bad-soft text-bad font-semibold">untrusted</span>}
+          {atts.length > 0 && <span className="shrink-0">📎 {atts.length}</span>}
+          <span className="shrink-0 ml-auto underline underline-offset-2">{open ? "hide" : "details"}</span>
+        </button>
       )}
+      {open && env && (
+        <dl className="mb-2.5 grid grid-cols-[86px_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md border border-line bg-raised px-3 py-2.5 text-[13px]">
+          <dt className="text-muted">From</dt><dd className="num [overflow-wrap:anywhere]">{env.from}</dd>
+          <dt className="text-muted">To</dt><dd className="num [overflow-wrap:anywhere]">{env.to}</dd>
+          {env.cc.length > 0 && <><dt className="text-muted">Cc</dt><dd className="num [overflow-wrap:anywhere]">{env.cc.join(", ")}</dd></>}
+          {env.reply_to && <><dt className="text-muted">Reply-To</dt><dd className="num [overflow-wrap:anywhere]">{env.reply_to}</dd></>}
+          <dt className="text-muted">Subject</dt><dd className="[overflow-wrap:anywhere]">{env.subject}</dd>
+          {atts.length > 0 && <><dt className="text-muted">Attached</dt><dd>{atts.map((a) => (
+            <div key={a.name} className="flex flex-wrap items-center gap-1.5"><span className="num">{a.name}</span>
+              <span className="rounded px-1.5 py-px bg-held-soft text-held text-[11px] font-semibold">{a.label}</span>
+              <span className="text-muted">{a.note}</span></div>))}</dd></>}
+          {env.template && <><dt className="text-muted">Template</dt><dd className="num">{env.template}</dd></>}
+          <dt className="text-muted">Trust</dt><dd>{env.signed ? "HMAC-signed by Airlock; verified when it came back through Primitive"
+            : isInbound ? "None. Sender domain is a routing hint, not identity" : isOut ? "Sent by Airlock to the thread sender only" : "Not signed"}
+            {env.delivered ? " · delivered by Primitive" : ""}</dd>
+          <dt className="text-muted">Why</dt><dd className="font-semibold">{env.why}</dd>
+        </dl>
+      )}
+      {open && env && <div className="text-[11px] uppercase tracking-wider text-muted mb-1">{isInbound ? "Email body (claims)" : "Body · shared context for the next agent"}</div>}
       {isCode
         ? <pre className="font-code text-[14.5px] leading-[1.55] whitespace-pre-wrap text-code">{post.body}</pre>
-        : <p className="font-letter text-[18px] leading-[1.5] whitespace-pre-wrap">{long && !open ? short : post.body}</p>}
+        : <p className={`font-letter ${isInbound || isOut ? "text-[16px] text-muted" : "text-[18px]"} leading-[1.5] whitespace-pre-wrap`}>{long && !more ? shortBody : post.body}</p>}
       {long && (
-        <button onClick={() => setOpen(!open)} className="text-[13px] text-muted hover:text-text mt-1 underline underline-offset-2">
-          {open ? "Show less" : "Show all"}</button>
+        <button onClick={() => setMore(!more)} className="text-[13px] text-muted hover:text-text mt-1 underline underline-offset-2">
+          {more ? "Show less" : "Show all"}</button>
       )}
     </li>
   );

@@ -17,6 +17,9 @@ export type Post = {
   body: string;
   data: Record<string, unknown>;
   created_at: string;
+  envelope?: { from: string | null; to: string | null; cc: string[]; reply_to?: string | null; subject: string;
+               signed: boolean; delivered?: boolean; template?: string; why: string;
+               attachments?: { name: string; label: string; note: string }[] };
 };
 
 export type Claim = { field: string; value: string; labels: string[] };

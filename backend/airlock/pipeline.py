@@ -28,6 +28,9 @@ def execute_payment(authorization_id: str) -> dict:
 def _reply(message_id: str, template: str, **values) -> dict:
     msg = db.one("select provider_message_id, from_address from messages where id=%s", message_id)
     body = render(template, **values)
+    if db.one("""select 1 from outbound_messages where to_address=%s and template=%s and body=%s
+                 and created_at > now() - interval '1 hour'""", msg["from_address"], template, body):
+        return {"ok": True, "sent_to": msg["from_address"], "template": template, "skipped": "same reply already sent"}
     provider_id = None
     if not msg["provider_message_id"].startswith("replay:"):
         try:

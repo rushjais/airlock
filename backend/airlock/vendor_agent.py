@@ -79,8 +79,9 @@ Decide what to do with the email from Kiln:
   contract price. Set corrected_invoice_number (append -R1) and corrected_amount_cents.
 - action "reconcile_receipt": it's a payment receipt -> extract the invoice number, amount in cents, and the transfer
   reference so you can mark it paid in your books. No reply needed.
-- action "answer": a question you can answer from your books -> answer briefly.
-- action "ignore": anything else.
+- action "answer": ONLY when Kiln asks you a direct question you can answer from your books -> answer briefly.
+- action "ignore": anything else, including notices that need no response ("already paid", "verification
+  pending", status updates). Never reply to a notice: two agents thanking each other is a loop.
 Replies are plain text under 80 words, signed "Corvid Software Billing (automated agent)"."""
 
 
@@ -99,8 +100,9 @@ def kickoff() -> dict:
     with _db() as conn:
         _upsert(conn, "INV-C-0931", "sent", amount=44900, note="generated at Pro tier price")
         _log(conn, "INV-C-0931", "sent to Kiln at $449.00")
+    issued = datetime.now().strftime("%b %d, %I:%M %p")  # unique per send, so a re-run demo isn't an identical email
     body = ("Hi Kiln team,\n\nYour October invoice INV-C-0931 for PO-310 (inventory platform subscription) is below.\n"
-            "Amount due: $449.00. Payment terms net 30.\n\nCorvid Software Billing (automated agent)")
+            f"Amount due: $449.00. Payment terms net 30. Issued {issued}.\n\nCorvid Software Billing (automated agent)")
     sent = primitive.send(to=config.AGENT_INBOX, subject="Invoice INV-C-0931 - October subscription",
                           body_text=body, from_addr=f"Corvid Software Billing <{address()}>")
     return {"ok": True, "sent_id": sent.get("id")}

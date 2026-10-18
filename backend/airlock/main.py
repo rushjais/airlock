@@ -153,8 +153,8 @@ def case(case_id: str):
     c = db.one("select * from cases where id=%s", case_id)
     if not c:
         raise HTTPException(404)
-    posts = db.all_rows("select author, kind, body, data, created_at from case_posts where case_id=%s order by created_at",
-                        case_id)
+    from . import thread_view
+    posts = thread_view.posts(c)
     claims = db.all_rows("select field, value, labels from claims where message_id=%s order by field", c["source_message_id"])
     return {"case": c, "posts": posts, "claims": claims}
 
