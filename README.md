@@ -58,14 +58,14 @@ These are enforced in this prototype and covered by tests. They are not a claim 
 
 ## Prior art
 > Independent hackathon project, not affiliated with **WorkOS Airlock** (WorkOS's intent-based access control for
-> agents, early access as of Oct 2026). Same category, different design:
+> agents, early access as of Oct 2026). Same family of problem, different layer:
 
 | | WorkOS Airlock | This Airlock |
 |---|---|---|
-| Who decides | Natural-language policies; some rules judged per call by a model | Deterministic code; a model never decides pay vs. hold |
-| Scope | General agent tool calls | Money: registry-bound destination, obligation-bound amount, one payment per obligation |
-| When unsure | Sends the call to a human | Resolves it: checks the vendor's phone on file, disputes the price with the vendor, then finishes |
-| Where it lives | A central policy layer | In the inbox: agents coordinating over email |
+| Governs | Which actions an agent may take, across its tools | The money terms: where it goes, how much, and which approved obligation it settles |
+| How | Intent + policies (deterministic checks and model-evaluated rules), human approval when needed | Deterministic payment invariants, registry-bound destination, one payment per obligation, protected executor |
+| When unsure | Asks a human | Resolves it with the vendor: phone on file, price dispute, reissue; asks the admin only when needed |
+| Lifecycle | Authorizes the tool call | Through to execution, receipt and the vendor reconciling its own books |
 
 - **CaMeL** (Google DeepMind, 2025): trusted planner, tool-less reader, provenance tracking, policies at tool calls.
 - **Hallmark** (AWS Builder Center community post, Sep 2026): provenance firewall for invoice payments on simulated data.
