@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   api, usd, type Card, type CaseDetail, type CaseRow, type Controls, type ModeResult, type Money, type Post,
-  type Results, type Summary, type VendorBooks,
+  type MonthEnd, type Results, type Summary, type VendorBooks,
 } from "./api";
 
 const POLL_MS = 1500;
@@ -120,6 +120,11 @@ function DemoButtons() {
   const [busy, setBusy] = useState<string | null>(null);
   return (
     <div className="flex items-center gap-1.5 mr-3">
+      <button disabled={busy !== null}
+        onClick={async () => { setBusy("monthend"); await api.monthEnd(); setTimeout(() => setBusy(null), 1500); }}
+        className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-text bg-text text-bg hover:opacity-90 disabled:opacity-50">
+        {busy === "monthend" ? "Starting" : "Run month-end"}
+      </button>
       <button disabled={busy !== null}
         onClick={async () => { setBusy("dispute"); await api.vendorDispute(); setTimeout(() => setBusy(null), 1500); }}
         className="px-2.5 py-1.5 rounded-md text-[13px] font-semibold border border-dashed border-line text-muted hover:text-text disabled:opacity-50">
@@ -349,6 +354,22 @@ const WHY: Record<string, string> = {
   reader_unavailable: "Couldn't read the email safely, so nothing can pay. It will be retried.",
 };
 
+/* What actually moved, from payment records: the email's ask on one side, the executed transfer on the other. */
+function Executed({ e }: { e: NonNullable<Card["executed"]> }) {
+  return (
+    <div className="mt-5 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5 rounded-lg border-2 border-line px-4 py-3">
+      <div className="text-[13px] text-muted font-semibold">Executed</div>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        {e.paid_to_last4
+          ? <span className="num text-[18px] font-bold text-ok">{usd(e.paid_cents)} → ••{e.paid_to_last4} ✓</span>
+          : <span className="num text-[16px] text-muted">{e.status === "authorized" || e.status === "scheduled" || e.status === "executing" ? "payment in progress" : "nothing paid yet"}</span>}
+        {e.refused_last4s.map((l) => <span key={l} className="num text-[18px] font-bold text-bad">$0.00 → ••{l}</span>)}
+      </div>
+      {e.transfer_id && <><div /><div className="num text-[12px] text-muted truncate">{e.transfer_id}</div></>}
+    </div>
+  );
+}
+
 /* The out-of-band check as evidence bound to one exact change (what an Inkbox "verified action" would return). */
 function VerifiedAction({ v }: { v: NonNullable<Card["verification"]> }) {
   const tone = v.answer === "no" ? "text-ok" : v.answer === "yes" ? "text-held" : v.answer === "waiting" ? "text-muted" : "text-held";
@@ -422,6 +443,7 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
           </div>
         )}
       </dl>
+      {card.executed && <Executed e={card.executed} />}
       {card.verification && <VerifiedAction v={card.verification} />}
       <p className="text-[13px] text-muted mt-6">Decided by deterministic code from the vendor registry and approved purchase orders. No model votes on pay or hold.</p>
     </section>
@@ -437,6 +459,7 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
   const held = cases.filter((c) => c.status === "held" || c.status === "needs_approval");
   return (
     <section className="min-h-0 overflow-y-auto rounded-lg border-2 border-line bg-panel p-5 space-y-6">
+      <MonthEndPanel />
       <div>
         <h2 className="text-[19px] font-bold mb-3">Money</h2>
         <ol className="space-y-2.5">
@@ -483,6 +506,33 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
       </div>
       <VendorBooksView />
     </section>
+  );
+}
+
+/* Month-end close: progress while the team works the stack, then the same digest the admin got. */
+function MonthEndPanel() {
+  const m = usePoll<MonthEnd>(api.monthEndStatus);
+  if (!m || !m.active) return null;
+  const pct = Math.round((m.launched / Math.max(1, m.total)) * 100);
+  const stat = (label: string, n: number, cls: string) => (
+    <div className="rounded-md bg-raised px-2.5 py-2"><div className="text-[12px] text-muted">{label}</div>
+      <div className={`num text-[20px] font-bold ${cls}`}>{n}</div></div>
+  );
+  return (
+    <div className="rounded-lg border-2 border-line p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <h2 className="text-[17px] font-bold">Month-end close</h2>
+        <span className={`num text-[12px] font-semibold ${m.running ? "text-held" : "text-ok"}`}>{m.running ? `working · ${m.cases} cases` : "done"}</span>
+      </div>
+      {m.running && <div className="h-1.5 rounded bg-raised overflow-hidden mb-3"><div className="h-full bg-held transition-all duration-700" style={{ width: `${pct}%` }} /></div>}
+      <div className="grid grid-cols-4 gap-1.5 mb-3">
+        {stat("Paid", m.paid.count, "text-ok")}{stat("Blocked", m.blocked.length, "text-bad")}
+        {stat("Held", m.held.length + m.resolved, "text-held")}{stat("Needs you", m.needs_you.length, m.needs_you.length ? "text-held" : "")}
+      </div>
+      <div className="flex justify-between text-[14px]"><span className="text-muted">Paid to accounts on file</span><span className="num font-bold text-ok">{usd(m.paid.cents)}</span></div>
+      <div className="flex justify-between text-[14px]"><span className="text-muted">Stolen</span><span className="num font-bold text-ok">{usd(m.stolen_cents)}</span></div>
+      {m.digest && <p className="mt-3 border-t border-line pt-3 text-[13.5px] leading-[1.5]"><span className="font-semibold">Sent to you: </span>{m.digest}</p>}
+    </div>
   );
 }
 

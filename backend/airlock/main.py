@@ -229,7 +229,23 @@ def decision_card(case_id: str):
     return {"decision": d["decision"] if d else None, "reason": d["reason"] if d else None,
             "flags": d["flags"] if d else [], "next_action": d["next_action"] if d else None,
             "rows": rows, "authorization_id": facts.get("authorization_id"), "case_status": c["status"],
-            "verification": _verified_action(mid)}
+            "verification": _verified_action(mid), "executed": _executed(facts, reg, accounts)}
+
+
+def _executed(facts: dict, reg: dict | None, asked_last4s: list[str]) -> dict | None:
+    """What actually moved, from payment records (never inferred): paid amount and destination for this obligation,
+    and $0 to every account the email asked for that isn't on file."""
+    if not reg or not facts.get("obligation_id"):
+        return None
+    a = db.one("""select a.status, a.amount_cents, a.stripe_transfer_id, a.stripe_account_id from payment_authorizations a
+                  where a.obligation_id=%s order by a.created_at desc limit 1""", facts["obligation_id"])
+    refused = [x for x in asked_last4s if x != reg["destination_last4"]]
+    if not a and not refused:
+        return None
+    paid = a and a["status"] == "succeeded"
+    return {"status": a["status"] if a else "none", "paid_cents": a["amount_cents"] if paid else 0,
+            "paid_to_last4": reg["destination_last4"] if paid and a["stripe_account_id"] == reg["stripe_account_id"] else None,
+            "transfer_id": a["stripe_transfer_id"] if paid else None, "refused_last4s": refused}
 
 
 def _verified_action(message_id) -> dict | None:
@@ -424,6 +440,21 @@ def demo_attempts_clear(request: Request):
     with db.tx() as conn:
         conn.execute(f"truncate {public.SCHEMA}.attempts")
     return {"ok": True}
+
+
+@app.post("/api/demo/monthend")
+def demo_monthend(request: Request):
+    """Local-only: run month-end close (about 9 distinct cases through the real pipeline, then one admin digest)."""
+    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "only available locally")
+    from . import monthend
+    return monthend.start(_process)
+
+
+@app.get("/api/monthend")
+def monthend_status():
+    from . import monthend
+    return monthend.summary()
 
 
 @app.get("/public/attempts")

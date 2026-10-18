@@ -59,7 +59,9 @@ export type Card = { decision: string | null; reason: string | null; flags: stri
                      verification?: { action: string; vendor: string; from_last4: string; to_last4: string | null;
                        contact: string | null; contact_source: string; channel: string | null; asked_at: string | null;
                        answer: string; reply: string | null; transcript: string | null; bound_to: string;
-                       expires_at: string | null; status: string; outcome: string } | null };
+                       expires_at: string | null; status: string; outcome: string } | null;
+                     executed?: { status: string; paid_cents: number; paid_to_last4: string | null;
+                       transfer_id: string | null; refused_last4s: string[] } | null };
 export type Controls = { auto_pay_limit_cents: number; undo_window_seconds: number; approval_queue: number;
                          after_rejected_change: "pay_on_file" | "hold";
                          standing_limits: { line_item: string; monthly_cap_cents: number; used_cents: number; vendor: string }[] };
@@ -68,6 +70,11 @@ export type VendorInvoice = { number: string; po: string; amount_cents: number; 
                               transfer_id: string | null; note: string | null; updated_at: string };
 export type VendorBooks = { company: string; address: string; invoices: VendorInvoice[];
                             events: { at: string; invoice: string; event: string }[] };
+
+type MEItem = { subject: string; reason: string | null; amount_cents: number | null };
+export type MonthEnd = { active: boolean; running: boolean; launched: number; total: number; cases: number; open: number;
+  paid: { count: number; cents: number }; stolen_cents: number; blocked: MEItem[]; held: MEItem[]; needs_you: MEItem[];
+  resolved: number; digest: string | null };
 
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
@@ -80,6 +87,8 @@ export const api = {
   setAfterRejected: (value: "pay_on_file" | "hold") =>
     fetch("/api/controls/after-rejected-change", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value }) }).then((r) => r.ok),
+  monthEnd: () => fetch("/api/demo/monthend", { method: "POST" }).then((r) => r.ok),
+  monthEndStatus: () => get<MonthEnd>("/api/monthend"),
   corvid: () => get<VendorBooks>("/api/vendor/corvid/books"),
   reset: () => fetch("/api/demo/reset", { method: "POST" }).then((r) => r.ok),
   forgedAuditor: () => fetch("/api/demo/forged-auditor", { method: "POST" }).then((r) => r.ok),

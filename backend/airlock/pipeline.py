@@ -292,8 +292,13 @@ def _notify_admin(case_id: str, change_request_id: str) -> None:
         agents.post(case_id, "verifier", "action", "Sent the admin a signed approval link by text and email.", send_email=False)
 
 
+# Each case holds one pooled connection for its advisory lock and needs more for its work; bound concurrency so a
+# burst of email (or month-end) can't exhaust the pool and deadlock. Extra cases wait their turn.
+_SLOTS = threading.BoundedSemaphore(3)
+
+
 def process(message_id: str) -> dict:
-    with db.message_lock(message_id):
+    with _SLOTS, db.message_lock(message_id):
         return _process_locked(message_id)
 
 
