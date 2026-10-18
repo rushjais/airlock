@@ -269,6 +269,11 @@ def verify(ref: ChangeRef):
                     f"{sent['phone_on_file_last4']}) by {sent['channel']}. The invoice stays held until they answer.",
                     sent, send_email=False)
         threading.Thread(target=_await_vendor, args=(ref.change_request_id,), daemon=True).start()
+    if sent.get("reason") == "unknown_change_request":
+        return {"decision": "hold", "reason": "unknown_change_request", "flags": [], "status": "held",
+                "next_action": "propose_payment",
+                "agent_guidance": "That change_request_id doesn't exist (stale or mistyped). Call list_inbox, then "
+                                  "propose_payment for the email again to get a current change_request_id. Nothing was paid."}
     return {"decision": "hold", "reason": "awaiting_vendor_confirmation" if sent.get("ok") else sent.get("reason"),
             "flags": [], "next_action": "poll get_case_status until the vendor answers", "facts": sent,
             "status": "awaiting_vendor" if sent.get("ok") else "held",

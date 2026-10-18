@@ -116,3 +116,8 @@ def test_compromise_warning_never_goes_to_the_suspicious_sender(monkeypatch):
     w2 = verify.send_compromise_warning(cr, paid_on_file=True)
     assert w2["email"] and sent_mail[-1]["to"] == "security@acmemetals.com"
     assert sent_mail[-1]["to"] not in {m["from_address"]}
+
+
+def test_stale_change_request_id_gets_a_clean_answer():
+    assert verify.send_code(str(uuid.uuid4()))["reason"] == "unknown_change_request"
+    assert verify.send_code("not-a-uuid")["reason"] == "unknown_change_request"

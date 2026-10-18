@@ -87,7 +87,14 @@ def send_compromise_warning(change_request_id: str, paid_on_file: bool) -> dict:
 
 
 def send_code(change_request_id: str) -> dict:
+    import uuid as _uuid
+    try:
+        _uuid.UUID(str(change_request_id))
+    except ValueError:
+        return {"ok": False, "reason": "unknown_change_request"}
     cr = db.one("select * from change_requests where id=%s", change_request_id)
+    if cr is None:  # stale or made-up id: nothing to verify, nothing changes
+        return {"ok": False, "reason": "unknown_change_request"}
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
     if cr["status"] != "pending_verification":
         return {"ok": False, "reason": f"change_request_{cr['status']}"}
