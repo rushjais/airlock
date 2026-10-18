@@ -3,8 +3,11 @@
 <p align="center"><b>Agents will get fooled. Getting fooled shouldn't move money.</b></p>
 
 <p align="center">
-An autonomous finance department that lives in email: AI agents read, dispute, verify and pay invoices,
-and do business with other companies' agents, while <b>nothing an email says can authorize a payment</b>.
+Airlock is an autonomous finance team of AI agents that runs accounts payable over email: agents with their own
+<b>Primitive</b> inboxes read invoices, dispute overcharges with other companies' agents, verify bank changes with the
+vendor's phone on file through <b>Inkbox</b>, and pay through <b>Stripe</b>. Agents will get fooled, so
+<b>nothing an email or model says can authorize money</b>: where it goes comes only from vendor records and how much
+only from an approved order, the trust layer agents need before businesses let them move money.
 </p>
 
 <p align="center">
