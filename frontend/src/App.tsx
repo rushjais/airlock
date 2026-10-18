@@ -725,7 +725,7 @@ function MailView() {
           {!f?.rows.length && <p className="text-muted text-[16px] py-8">No messages yet. Run month-end or send an invoice to ap@.</p>}
           <ol className="space-y-1.5">
             {(f?.rows ?? []).map((r, i) => (
-              <li key={i} className={`grid grid-cols-[64px_92px_minmax(0,1fr)] items-start gap-3 rounded-md border border-line bg-panel px-3 py-2 ${isFresh(r.at) ? "fresh" : ""}`}>
+              <li key={i} className={`grid grid-cols-[84px_100px_minmax(0,1fr)] items-start gap-3 rounded-md border border-line bg-panel px-3 py-2 ${isFresh(r.at) ? "fresh" : ""}`}>
                 <span className="num text-[12px] text-muted pt-0.5">{time(r.at)}</span>
                 <span className={`text-[12px] font-bold pt-0.5 ${r.via === "Inkbox" ? "text-ok" : "text-text"}`}>
                   {r.via === "Inkbox" ? `Inkbox ${r.channel}` : "Primitive email"}</span>
