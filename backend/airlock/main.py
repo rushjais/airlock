@@ -258,6 +258,13 @@ def _executed(facts: dict, reg: dict | None, asked_last4s: list[str]) -> dict | 
             "transfer_id": a["stripe_transfer_id"] if paid else None, "refused_last4s": refused}
 
 
+def _contact_source(vendor_id: str) -> str:
+    from . import inkbox_sync
+    c = inkbox_sync.STATE["contacts"].get(vendor_id)
+    return (f"Inkbox contact card \"{c['name']}\", synced one-way from the vendor registry (never the email)"
+            if c else "vendor registry (never the email)")
+
+
 def _verified_action(message_id) -> dict | None:
     """The out-of-band check as a structured record, bound to the exact change. Evidence only: Airlock's policy
     (and, for a 'yes', the admin) decides what it authorizes."""
@@ -278,7 +285,7 @@ def _verified_action(message_id) -> dict | None:
     return {"action": "change payment destination", "vendor": cr["vendor"],
             "from_last4": cr["old_destination_last4"], "to_last4": cr["new_last4"],
             "contact": f"{cr['vendor']} phone on file ••{(ev.get('phone_on_file') or '')[-4:]}" if ev.get("phone_on_file") else None,
-            "contact_source": "vendor registry (never the email)", "channel": ev.get("channel"),
+            "contact_source": _contact_source(cr["vendor_id"]), "channel": ev.get("channel"),
             "identity": "@" + ((config.get("INKBOX_HANDLE") or "airlock") if ev.get("channel") == "voice call"
                                else (config.get("INKBOX_VERIFY_HANDLE") or config.get("INKBOX_HANDLE") or "airlock")),
             "asked_at": ev.get("verification_sent_at"), "answer": answer, "reply": reply,
@@ -386,9 +393,11 @@ def approval_reconfirm(cr_id: str, body: AuthBody):
 def _start_workers():
     approvals.start_release_worker()
     _resume_vendor_listeners()
-    from . import ask, public
+    from . import ask, inkbox_sync, public
     ask.start()
     public.ensure()
+    import threading
+    threading.Thread(target=inkbox_sync.sync, daemon=True, name="inkbox-sync").start()
 
 
 def _resume_vendor_listeners() -> None:

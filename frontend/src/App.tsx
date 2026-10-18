@@ -751,6 +751,7 @@ function MailView() {
           <div className="rounded-lg border-2 border-line bg-panel p-4">
             <h3 className="text-[16px] font-bold mb-2">Inkbox identities</h3>
             <ul className="space-y-1 num text-[13px]">{(f?.inkbox_identities ?? []).map((x) => <li key={x}>{x}</li>)}</ul>
+            {(f?.inkbox_contacts ?? []).length > 0 && <p className="text-[13px] mt-2"><span className="text-muted">Contact cards (synced one-way from the registry): </span>{f?.inkbox_contacts.join("; ")}</p>}
             <p className="text-[12.5px] text-muted mt-2">The channel an email can't fake: only phones already on file (vendor checks, compromise warnings) and the admin's own phone.</p>
           </div>
         </aside>

@@ -92,7 +92,7 @@ export type MailWho = { label: string; party: string; name?: string };
 export type MailRow = { at: string; via: "Primitive" | "Inkbox"; channel: string; from: MailWho; to: MailWho[]; cc?: string[];
   subject: string | null; case_id: string | null; trust: string; what: string };
 export type MailFeed = { rows: MailRow[]; emails: number; inkbox: number; identities: number;
-  primitive_identities: string[]; inkbox_identities: string[] };
+  primitive_identities: string[]; inkbox_identities: string[]; inkbox_contacts: string[] };
 
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),

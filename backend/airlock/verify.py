@@ -208,7 +208,11 @@ def _replies_since(phone: str, since: datetime) -> list[str]:
     out = []
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
-        for t in ident.list_texts(limit=20):
+        try:  # an iMessage-only identity (no phone number) has no SMS inbox
+            texts = ident.list_texts(limit=20)
+        except Exception:
+            texts = []
+        for t in texts:
             if t.direction == "inbound" and t.remote_phone_number == phone and t.created_at > since:
                 out.append((t.created_at, t.text or ""))
         for m in ident.list_imessages(limit=20):

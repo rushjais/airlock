@@ -85,4 +85,11 @@ def feed(limit: int = 150) -> dict:
             "primitive_identities": ["ap@ (Kiln's inbox)", "intake@", "auditor@", "treasurer@", "verifier@",
                                      "case-…@ (one per case)", "corvid-billing@ (Corvid's agent)"],
             "inkbox_identities": ["@" + (config.get("INKBOX_HANDLE") or "airlock") + " (text, iMessage, voice)"]
-            + (["@" + config.get("INKBOX_VERIFY_HANDLE") + " (vendor checks)"] if config.get("INKBOX_VERIFY_HANDLE") else [])}
+            + (["@" + config.get("INKBOX_VERIFY_HANDLE") + " (vendor checks; iMessage allowlist: phones on file only"
+                + (", whitelist on" if _sync()["whitelist"] else "") + ")"] if config.get("INKBOX_VERIFY_HANDLE") else []),
+            "inkbox_contacts": sorted({c["name"] for c in _sync()["contacts"].values()})}
+
+
+def _sync() -> dict:
+    from . import inkbox_sync
+    return inkbox_sync.STATE
