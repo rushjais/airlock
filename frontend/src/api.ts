@@ -49,7 +49,10 @@ export type ModeResult = {
 };
 export type TrickRate = { attempts: number; fooled: number; cents_to_attacker: number; runs: number; runs_with_any_loss: number };
 export type Results = { available: boolean; run_id?: string; baseline?: ModeResult;
-  baseline_permissive?: ModeResult; airlock?: ModeResult; trick_rate?: TrickRate };
+  baseline_permissive?: ModeResult; airlock?: ModeResult; trick_rate?: TrickRate;
+  injection?: { cases: number; techniques: number; reader_fooled: number; impact: number; money_to_other_accounts: number;
+    registry_changes: number; tool_agent_prompt_leaks: number; held_or_blocked: number; paid_real_invoice: number;
+    reader_refused_failsafe_hold?: number } };
 
 export type Summary = { company: string; paid_cents: number; held_cents: number; stolen_cents: number };
 export type CardRow = { label: string; claim: string | number | null; record: string | number | null; match: boolean;

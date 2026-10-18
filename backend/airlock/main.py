@@ -514,6 +514,13 @@ def results():
     if not path.exists():
         return {"available": False}
     out = {"available": True, **json.loads(path.read_text())}
+    inj = config.ROOT / "results" / "injection.json"
+    if inj.exists():
+        j = json.loads(inj.read_text())
+        out["injection"] = {k: j.get(k) for k in ("cases", "reader_fooled", "impact", "money_to_other_accounts",
+                                                   "registry_changes", "tool_agent_prompt_leaks", "held_or_blocked",
+                                                   "paid_real_invoice", "reader_refused_failsafe_hold")}
+        out["injection"]["techniques"] = len(j.get("by_technique") or {})
     tricks = config.ROOT / "results" / "trick_rate.json"
     if tricks.exists():
         t = json.loads(tricks.read_text())

@@ -77,6 +77,19 @@ verification, receipt confirmation, one-off approval) instead of dead-end blocks
 
 ## Results (measured Oct 17, 2026; every number below is from a run in this repo)
 
+**Prompt injection (`backend/injection.py`):** 39 attacks across 13 techniques (plain "SYSTEM:" notes, invisible
+Unicode, attachment text, attachment filenames, base64, Spanish/French/German, fake "Airlock policy update", forwarded
+"CEO approved" chains, quoted replies, fake tool calls, role-play, data exfiltration, injected amounts), each riding on a
+real invoice, through the real reader (Claude Haiku) and policy:
+- **The model got fooled 1/39 times** (it missed or adopted an injected instruction).
+- **It mattered 0/39 times**: 0 authorizations to an account not on file, 0 wrong amounts, 0 registry changes,
+  0 injected text in the tool-holding agent's prompt.
+- 32 held or blocked (3 of them because the model refused to read the email, which fails safe), 7 paid the real
+  $1,450 invoice to the account on file (the attack achieved nothing).
+
+Tool-holding agents never receive email text: the Treasurer sees only the structured verdict (decision, reason code,
+next action, ids), and the claimed invoice number is reduced to a strict token before it gets there (tested).
+
 **Before/after on the same 16 emails** (10 fixture scenarios, 3 unseen, 3 quiet-fraud), same Claude model,
 real Stripe test-mode transfers (`backend/evaluate.py`):
 
