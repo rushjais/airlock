@@ -349,6 +349,29 @@ const WHY: Record<string, string> = {
   reader_unavailable: "Couldn't read the email safely, so nothing can pay. It will be retried.",
 };
 
+/* The out-of-band check as evidence bound to one exact change (what an Inkbox "verified action" would return). */
+function VerifiedAction({ v }: { v: NonNullable<Card["verification"]> }) {
+  const tone = v.answer === "no" ? "text-ok" : v.answer === "yes" ? "text-held" : v.answer === "waiting" ? "text-muted" : "text-held";
+  const row = (k: string, val: React.ReactNode) => val ? (<><dt className="text-muted">{k}</dt><dd className="[overflow-wrap:anywhere]">{val}</dd></>) : null;
+  return (
+    <div className="mt-6 rounded-lg border-2 border-line bg-raised p-4">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <h3 className="text-[16px] font-bold">Verified action <span className="text-muted font-normal text-[13px]">· evidence, not authority</span></h3>
+        <span className={`num text-[13px] font-bold uppercase ${tone}`}>{v.answer === "waiting" ? "waiting…" : `vendor: ${v.answer}`}</span>
+      </div>
+      <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px]">
+        {row("Action", <span><span className="font-semibold">{v.action}</span> <span className="num">••{v.from_last4} → <span className="text-bad">••{v.to_last4}</span></span></span>)}
+        {row("Asked", v.contact && <span>{v.contact} <span className="text-muted">({v.contact_source})</span></span>)}
+        {row("Channel", v.channel && <span className="num">Inkbox {v.channel}{v.asked_at ? ` · ${time(v.asked_at)}` : ""}</span>)}
+        {row("Answer", v.reply && <span className="font-letter text-[16px]">"{v.reply}"</span>)}
+        {row("Transcript", v.transcript && <span className="text-muted text-[13px]">{v.transcript}</span>)}
+        {row("Bound to", <span className="num text-[13px]">{v.bound_to}</span>)}
+      </dl>
+      <p className="mt-3 border-t border-line pt-3 text-[14.5px]"><span className="text-muted">Airlock's decision: </span><span className="font-semibold">{v.outcome}</span></p>
+    </div>
+  );
+}
+
 function fmt(v: string | number | null | undefined, money?: boolean) {
   if (v === null || v === undefined) return "-";
   return money && typeof v === "number" ? usd(v) : String(v);
@@ -399,6 +422,7 @@ function DecisionCard({ caseId }: { caseId: string | null }) {
           </div>
         )}
       </dl>
+      {card.verification && <VerifiedAction v={card.verification} />}
       <p className="text-[13px] text-muted mt-6">Decided by deterministic code from the vendor registry and approved purchase orders. No model votes on pay or hold.</p>
     </section>
   );

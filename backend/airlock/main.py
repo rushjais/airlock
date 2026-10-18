@@ -220,7 +220,35 @@ def decision_card(case_id: str):
                      "match": facts["obligation_status"] == "accepted"})
     return {"decision": d["decision"] if d else None, "reason": d["reason"] if d else None,
             "flags": d["flags"] if d else [], "next_action": d["next_action"] if d else None,
-            "rows": rows, "authorization_id": facts.get("authorization_id"), "case_status": c["status"]}
+            "rows": rows, "authorization_id": facts.get("authorization_id"), "case_status": c["status"],
+            "verification": _verified_action(mid)}
+
+
+def _verified_action(message_id) -> dict | None:
+    """The out-of-band check as a structured record, bound to the exact change. Evidence only: Airlock's policy
+    (and, for a 'yes', the admin) decides what it authorizes."""
+    cr = db.one("""select c.*, v.name vendor from change_requests c join vendors v on v.id=c.vendor_id
+                   where c.source_message_id=%s order by c.created_at desc limit 1""", message_id)
+    if not cr:
+        return None
+    ev = cr["evidence"] or {}
+    reply = ev.get("reply") or ev.get("vendor_reply")
+    answer = {"rejected": "no", "verified": "yes", "approved": "yes", "unresolved": "unclear"}.get(cr["status"],
+             "waiting" if cr["status"] == "pending_verification" else cr["status"])
+    outcome = {"rejected": "Change rejected. The invoice can only pay the account on file.",
+               "verified": "Vendor confirmed. Still needs the admin's approval on the signed page.",
+               "approved": "Admin approved. New account scheduled behind the undo window.",
+               "unresolved": "No clear answer. Held; the admin was asked to call the vendor.",
+               "pending_verification": "Waiting for the vendor's answer. Nothing moves meanwhile.",
+               "superseded": "Vendor records changed since; this request no longer applies."}.get(cr["status"], cr["status"])
+    return {"action": "change payment destination", "vendor": cr["vendor"],
+            "from_last4": cr["old_destination_last4"], "to_last4": cr["new_last4"],
+            "contact": f"{cr['vendor']} phone on file ••{(ev.get('phone_on_file') or '')[-4:]}" if ev.get("phone_on_file") else None,
+            "contact_source": "vendor registry (never the email)", "channel": ev.get("channel"),
+            "asked_at": ev.get("verification_sent_at"), "answer": answer, "reply": reply,
+            "transcript": (ev.get("transcript") or "")[:400] or None,
+            "bound_to": f"{cr['vendor']} · ••{cr['old_destination_last4']} → ••{cr['new_last4']} · registry v{cr['base_registry_version']}",
+            "expires_at": cr["otp_expires_at"], "status": cr["status"], "outcome": outcome}
 
 
 @app.get("/api/controls")
