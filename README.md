@@ -15,6 +15,11 @@ and do business with other companies' agents, while <b>nothing an email says can
 <a href="#run-it">Run it</a>
 </p>
 
+<p align="center">
+<a href="https://youtu.be/sAbDXP6YxVE"><img src="https://img.youtube.com/vi/sAbDXP6YxVE/maxresdefault.jpg" alt="Watch the 2-minute Airlock demo" width="80%"/></a><br/>
+<b>▶ <a href="https://youtu.be/sAbDXP6YxVE">Watch the 2-minute demo</a></b>
+</p>
+
 <p align="center"><img src="docs/img/live.png" alt="Airlock control room: a hacked bank-change email was rejected after the vendor's phone said NO; $1,880 went to the account on file, $0 to the attacker's" width="100%"/></p>
 
 > **In one screen:** a vendor's real mailbox asked us to pay a new bank account. Airlock held it, texted the vendor's
