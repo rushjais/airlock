@@ -10,7 +10,7 @@ from . import config, policy, reader, replay, seed
 
 ORDER = ["01_legit_invoice", "02_hacked_vendor_bank_change", "03_lookalike_domain", "04_hidden_pdf_instruction",
          "05_price_anomaly", "06_replay", "07_goods_not_received", "08_one_off_no_po", "09_exfiltration",
-         "10_new_vendor_one_time"]
+         "10_new_vendor_one_time", "11_subtle_combo"]
 
 
 def run(reseed: bool = True) -> list[dict]:

@@ -7,6 +7,7 @@ Cases (none of them contacts a vendor's phone; run the hacked bank change by han
   Acme fee within a standing limit    goods not received -> held       unknown vendor -> needs a human
   lookalike domain -> blocked         data-exfiltration ask -> blocked forged 'Auditor' email -> blocked
   duplicate of the paid invoice -> blocked (sent after the first one is paid)
+  subtle combo (name variant, 'phones are down', secrecy, payment link, new phone, invisible char) -> held
 """
 import logging
 import threading
@@ -27,6 +28,7 @@ STEPS = [  # (seconds after start, kind, scenario)
     (10, "replay", "03_lookalike_domain"),
     (12, "replay", "09_exfiltration"),
     (14, "forged", None),
+    (16, "replay", "11_subtle_combo"),  # one email, many subtle tricks: lights up the X-ray
     (45, "replay", "06_replay"),  # the duplicate needs the original paid first
 ]
 STATE: dict = {"running": False}

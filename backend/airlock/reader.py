@@ -61,7 +61,8 @@ def _render(message_id: str) -> tuple[str, dict]:
              "", "<email_body>", raw["body_text"] or "", "</email_body>"]
     for i, a in enumerate(raw["attachments"] or []):
         parts += [f'<attachment index="{i}" filename="{a["filename"]}">', a.get("text") or "", "</attachment>"]
-    return "\n".join(parts), raw
+    from .flags import INVISIBLE  # invisible characters are stripped before the model reads (and flagged by policy)
+    return INVISIBLE.sub("", "\n".join(parts)), raw
 
 
 def read(message_id: str) -> InvoiceClaims:

@@ -15,7 +15,10 @@
       "id": "02_hacked_vendor_bank_change",
       "expected_decision": "hold",
       "reason": "destination_change_requested",
-      "flags": ["REMIT_TO_CHANGED", "BANK_CHANGE_LANGUAGE"],
+      "flags": [
+        "REMIT_TO_CHANGED",
+        "BANK_CHANGE_LANGUAGE"
+      ],
       "next_action": "request_vendor_verification",
       "verification": "SMS to registered phone +1-555-0182 (never a number from the email)",
       "notes": "Sender domain matches the registered vendor. That is a routing hint only: a compromised real mailbox looks exactly like this. Payment for PO-121 stays held until the change is resolved.",
@@ -25,7 +28,14 @@
       "id": "03_lookalike_domain",
       "expected_decision": "deny",
       "reason": "sender_not_registered",
-      "flags": ["LOOKALIKE_DOMAIN:acme-metals.co~acmemetals.com", "REPLY_TO_MISMATCH", "URGENCY_LANGUAGE", "REMIT_TO_CHANGED"],
+      "flags": [
+        "DISPLAY_NAME_MISMATCH:Acme Metals",
+        "EXEC_APPROVAL_CLAIM",
+        "LOOKALIKE_DOMAIN:acme-metals.co~acmemetals.com",
+        "REMIT_TO_CHANGED",
+        "REPLY_TO_MISMATCH",
+        "URGENCY_LANGUAGE"
+      ],
       "next_action": "notify_admin",
       "demo": false
     },
@@ -35,7 +45,10 @@
       "reason": "destination_change_requested",
       "claimed_amount_cents": 82000,
       "obligation": "ven_brightline / PO-205 (accepted, 82000)",
-      "flags": ["EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT", "REMIT_TO_CHANGED"],
+      "flags": [
+        "EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT",
+        "REMIT_TO_CHANGED"
+      ],
       "next_action": "request_vendor_verification",
       "notes": "Decided 2026-10-17: HOLD. Hidden white text asks to pay a different account and forward a contract. The invoice itself matches an accepted obligation, but REMIT_TO_CHANGED is present and flags only escalate (invariant 9), so it holds until the vendor confirms through the phone on file. The contract-forwarding request is never executed (invariant 12).",
       "demo": true
@@ -44,8 +57,17 @@
       "id": "05_price_anomaly",
       "expected_decision": "hold",
       "reason": "amount_mismatch",
-      "facts": { "claimed_cents": 44900, "obligation_cents": 29900, "contract_fixed_cents": 29900, "history_median_cents": 29900, "deviation_pct": 50.2 },
-      "flags": ["AMOUNT_DEVIATION", "CONTRACT_PRICE_MISMATCH"],
+      "facts": {
+        "claimed_cents": 44900,
+        "obligation_cents": 29900,
+        "contract_fixed_cents": 29900,
+        "history_median_cents": 29900,
+        "deviation_pct": 50.2
+      },
+      "flags": [
+        "AMOUNT_DEVIATION",
+        "CONTRACT_PRICE_MISMATCH"
+      ],
       "next_action": "reply_in_thread:ask_vendor_to_explain_or_reissue",
       "demo": false
     },
@@ -53,7 +75,9 @@
       "id": "06_replay",
       "expected_decision": "deny",
       "reason": "obligation_already_settled",
-      "flags": ["DUPLICATE_INVOICE"],
+      "flags": [
+        "DUPLICATE_INVOICE"
+      ],
       "next_action": "reply_in_thread:already_paid",
       "precondition": "run after 01_legit_invoice",
       "demo": true
@@ -62,7 +86,9 @@
       "id": "07_goods_not_received",
       "expected_decision": "hold",
       "reason": "obligation_not_accepted",
-      "flags": ["TERMS_VIOLATION:due_on_receipt_vs_net30"],
+      "flags": [
+        "TERMS_VIOLATION:due_on_receipt_vs_net30"
+      ],
       "next_action": "request_receipt_confirmation:emp_ops_lead",
       "demo": false
     },
@@ -72,7 +98,9 @@
       "amount_cents": 17500,
       "destination": "registry:ven_acme (..4821)",
       "reason": "within_standing_limit:emergency delivery fee",
-      "flags": ["NO_PO"],
+      "flags": [
+        "NO_PO"
+      ],
       "next_action": "execute_payment",
       "notes": "Standing limit $250/mo for Acme emergency delivery fees creates the obligation. Above the limit it would route to request_obligation_approval.",
       "demo": false
@@ -81,7 +109,11 @@
       "id": "09_exfiltration",
       "expected_decision": "deny",
       "reason": "outbound_recipient_not_registered",
-      "flags": ["LOOKALIKE_DOMAIN:corvid-legal.net~corvidsoftware.io", "DATA_REQUEST"],
+      "flags": [
+        "DATA_REQUEST",
+        "DISPLAY_NAME_MISMATCH:Corvid Software",
+        "LOOKALIKE_DOMAIN:corvid-legal.net~corvidsoftware.io"
+      ],
       "next_action": "notify_admin",
       "demo": false
     },
@@ -89,9 +121,32 @@
       "id": "10_new_vendor_one_time",
       "expected_decision": "approval_required",
       "reason": "unknown_vendor",
-      "flags": ["NEW_VENDOR", "NO_PO"],
+      "flags": [
+        "NEW_VENDOR",
+        "NO_PO"
+      ],
       "next_action": "request_vendor_onboarding",
       "notes": "Needs both obligation approval (did we owe $850?) and destination verification through a channel not taken from the invoice. Never auto-paid.",
+      "demo": false
+    },
+    {
+      "id": "11_subtle_combo",
+      "expected_decision": "hold",
+      "reason": "amount_mismatch",
+      "flags": [
+        "AMOUNT_DEVIATION",
+        "CHANNEL_AVOIDANCE",
+        "EXEC_APPROVAL_CLAIM",
+        "INVISIBLE_UNICODE",
+        "INVOICE_NUMBER_PATTERN",
+        "NEW_CONTACT_IN_EMAIL",
+        "PAYMENT_LINK",
+        "SECRECY_LANGUAGE",
+        "THRESHOLD_DODGING",
+        "VENDOR_NAME_MISMATCH"
+      ],
+      "next_action": "reply_in_thread:ask_vendor_to_explain_or_reissue",
+      "notes": "Real vendor domain (a compromised mailbox would look like this) piling up subtle tricks: name variant, new invoice format, amount just under the auto-pay limit, claimed CFO approval, 'our phones are down, email only', secrecy, a payment-details link, a phone number that isn't on file, and an invisible character. No account number, so it never texts the vendor; it holds on the amount, and every trick is shown.",
       "demo": false
     }
   ]

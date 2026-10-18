@@ -5,6 +5,7 @@ payment tool accepts nothing but an authorization_id. If it were fooled or hallu
 still refuse: the agent can propose, only Airlock records can authorize.
 """
 import json
+import re
 import logging
 
 import anthropic
@@ -55,9 +56,14 @@ def compact(verdict: dict) -> dict:
     """What Treasurer is allowed to see: the verdict, no raw content."""
     keep = ("vendor_id", "vendor_name", "invoice_number", "po_number", "claimed_cents", "obligation_cents", "amount_cents",
             "destination", "change_request_id", "authorization_id", "deviation_pct", "standing_limit")
-    return {"decision": verdict["decision"], "reason": verdict["reason"], "flags": verdict["flags"],
+    facts = {k: v for k, v in verdict["facts"].items() if k in keep and v is not None}
+    # The claimed invoice number is attacker-controlled text: only a strict token shape reaches a tool-holding model.
+    if "invoice_number" in facts and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,31}", str(facts["invoice_number"])):
+        facts["invoice_number"] = "(unparseable)"
+    return {"decision": verdict["decision"], "reason": verdict["reason"],
+            "flags": [re.sub(r"[^A-Z0-9_:.~-]", "", f.upper())[:60] for f in verdict["flags"]],
             "next_action": verdict["next_action"],
-            "facts": {k: v for k, v in verdict["facts"].items() if k in keep and v is not None},
+            "facts": facts,
             **({"authorization_id": verdict["authorization_id"]} if verdict.get("authorization_id") else {})}
 
 

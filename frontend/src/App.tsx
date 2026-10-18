@@ -456,6 +456,12 @@ function XRay({ caseId }: { caseId: string | null }) {
       </div>
       <p className="text-[13px] text-muted mb-4">Received by Primitive at ap@. {on ? `${hits} things Airlock's checks marked, from vendor records and fixed rules; no model involved.` : "What a human or a naive agent sees."}</p>
 
+      {on && x.tricks.length > 0 && (
+        <div className="mb-4 rounded-md border-2 border-bad/50 bg-bad-soft/40 px-3 py-2.5">
+          <div className="text-[12px] uppercase tracking-wider text-bad font-bold mb-1">{x.tricks.length} tricks caught by Airlock's rules</div>
+          <div className="flex flex-wrap gap-1.5">{x.tricks.map((t) => <span key={t} className="rounded-full border border-bad/40 px-2 py-0.5 text-[12.5px]">{t}</span>)}</div>
+        </div>
+      )}
       <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[14px] mb-4">
         <dt className="text-muted">From</dt>
         <dd className="num [overflow-wrap:anywhere]">
@@ -489,6 +495,14 @@ function XRay({ caseId }: { caseId: string | null }) {
           </div>
         </div>
       ))}
+      {on && x.reviewer.length > 0 && (
+        <div className="mt-3 rounded-md border border-line px-3 py-2.5">
+          <div className="text-[12px] uppercase tracking-wider text-muted font-bold mb-1.5">Model reviewer · quoted evidence · explains, never decides</div>
+          <ul className="space-y-1.5">{x.reviewer.map((r, i) => (
+            <li key={i} className="text-[13.5px]"><span className="num text-[11.5px] font-semibold text-held uppercase mr-1.5">{r.technique.replace("_", " ")}</span>
+              <span className="font-letter">"{r.quote}"</span> <span className="text-muted">· {r.why}</span></li>))}</ul>
+        </div>
+      )}
       <div className="mt-4 grid grid-cols-2 gap-2">
         <div className="rounded-lg border-2 border-line px-4 py-3"><div className="text-[13px] text-muted">Claims from this email</div><div className="num text-[26px] font-bold">{x.claims}</div></div>
         <div className="rounded-lg border-2 border-ok px-4 py-3"><div className="text-[13px] text-muted">Authority from this email</div><div className="num text-[26px] font-bold text-ok">{x.authority}</div></div>

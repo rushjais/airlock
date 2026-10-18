@@ -13,7 +13,10 @@ from .reader import claims_for
 
 ESCALATE_TO_HOLD = {"EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT", "REPLY_TO_MISMATCH", "BANK_CHANGE_LANGUAGE",
                     "URGENCY_LANGUAGE", "NEW_LINE_ITEM", "DATA_REQUEST", "AMOUNT_DEVIATION",
-                    "CONTRACT_PRICE_MISMATCH"}
+                    "CONTRACT_PRICE_MISMATCH", "CHANNEL_AVOIDANCE", "SECRECY_LANGUAGE", "PAYMENT_LINK",
+                    "VENDOR_NAME_MISMATCH", "EXEC_APPROVAL_CLAIM", "INVISIBLE_UNICODE"}
+# Advisory only (shown and explained, never change the decision): FIRST_TIME_SENDER, NEW_CONTACT_IN_EMAIL,
+# INVOICE_NUMBER_PATTERN, THRESHOLD_DODGING, and every REVIEW:* finding from the model reviewer.
 ESCALATE_TO_DENY = {"DUPLICATE_INVOICE"}
 RANK = {"pay": 0, "pending_approval": 1, "approval_required": 1, "hold": 2, "deny": 3}
 AUTH_TTL = timedelta(hours=1)
@@ -62,12 +65,19 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
     vid = vendor["id"] if vendor else None
     po = _norm_po(_first(claims, "po_number"))
     obligation = db.one("select * from obligations where vendor_id=%s and po_number=%s", vid, po) if vid and po else None
+    raw_body = raw["body_text"] or ""
+    raw_att = "\n".join(a.get("text") or "" for a in raw["attachments"] or [])
+    from email.utils import parseaddr
+    hdr = db.one("select from_header from message_raw where message_id=%s", message_id) or {}
+    first_time = bool(vendor) and msg["from_address"] != (vendor["registered_email"] or "").lower() and not db.one(
+        "select 1 from messages where from_address=%s and received_at < %s limit 1", msg["from_address"], msg["received_at"])
+    company = db.one("select auto_pay_limit_cents from company") or {}
     ev = F.Evidence(
         from_domain=msg["from_domain"],
         reply_to=msg["reply_to"],
-        subject=msg["subject"] or "",
-        body=raw["body_text"] or "",
-        attachment_text="\n".join(a.get("text") or "" for a in raw["attachments"] or []),
+        subject=F.INVISIBLE.sub("", msg["subject"] or ""),
+        body=F.INVISIBLE.sub("", raw_body),
+        attachment_text=F.INVISIBLE.sub("", raw_att),
         claims=claims,
         vendor=vendor,
         lookalike_of=look,
@@ -80,6 +90,10 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
         claimed_cents=_cents(_first(claims, "amount_cents")),
         invoice_number=_first(claims, "invoice_number"),
         other_vendors=[x for x in vendors if x["id"] != vid],
+        display_name=parseaddr(hdr.get("from_header") or "")[0],
+        first_time_sender=first_time,
+        auto_pay_limit_cents=company.get("auto_pay_limit_cents"),
+        raw_text=(msg["subject"] or "") + "\n" + raw_body + "\n" + raw_att,
     )
     return msg, ev
 
@@ -102,6 +116,14 @@ def _open_change_request(message_id: str, vendor: dict, ev: F.Evidence, obligati
 def propose_payment(message_id: str) -> dict:
     msg, ev = _evidence(message_id)
     flags = F.compute(ev)
+    # Model reviewer findings: advisory only (REVIEW:* is in no escalation set), so they explain, never decide.
+    for c in ev.claims.get("suspicion", []):
+        try:
+            t = json.loads(c["value"]).get("technique", "other")
+        except (ValueError, AttributeError):
+            continue
+        if f"REVIEW:{t.upper()}" not in flags:
+            flags.append(f"REVIEW:{t.upper()}")
     claimed = ev.claimed_cents
     facts: dict = {"message_id": message_id, "from_domain": ev.from_domain,
                    "claimed_cents": claimed, "invoice_number": ev.invoice_number,

@@ -8,12 +8,23 @@ import re
 
 from . import db, flags as F
 
+import json
+
+HIDDEN = "⟦hidden character⟧"
 SPAN_RULES = [  # (kind, regex, note)
     ("agent", F.AGENT_DIRECTED, "aimed at an automated agent"),
     ("bank", F.BANK_CHANGE, "bank-change story"),
     ("urgency", F.URGENCY, "pressure to skip checks"),
     ("data", F.DATA_ASK, "asks for internal documents"),
+    ("agent", F.CHANNEL_AVOIDANCE, "avoids phone verification"),
+    ("agent", F.SECRECY, "asks for secrecy"),
+    ("urgency", F.EXEC_CLAIM, "claimed executive approval"),
+    ("agent", F.PAYMENT_LINK, "link to change payment details"),
+    ("agent", re.compile(re.escape(HIDDEN)), "invisible character in the email"),
 ]
+
+
+PHONE_ON_FILE = ""
 
 
 def _spans(text: str, registry_last4: str | None) -> list[dict]:
@@ -29,6 +40,11 @@ def _spans(text: str, registry_last4: str | None) -> list[dict]:
         out.append({"start": m.start(1), "end": m.end(1), "kind": "account_ok" if same else "account",
                     "note": "matches company records" if same else
                     f"≠ company records (••{registry_last4})" if registry_last4 else "not in company records"})
+    for m in F.PHONE.finditer(text):
+        num = "".join(g for g in m.groups() if g)
+        same = PHONE_ON_FILE and num == PHONE_ON_FILE
+        out.append({"start": m.start(), "end": m.end(), "kind": "account_ok" if same else "account",
+                    "note": "phone on file" if same else "not the phone on file (never used)"})
     for m in F.ROUTING.finditer(text):
         out.append({"start": m.start(1), "end": m.end(1), "kind": "account", "note": "routing number from the email"})
     out.sort(key=lambda s: (s["start"], -s["end"]))
@@ -83,10 +99,12 @@ def build(case_id: str) -> dict | None:
     look = None if vendor else F.lookalike(m["from_domain"], vendors)
     reg = vendor or look
     last4 = reg["destination_last4"] if reg else None
-    body = (raw["body_text"] or "").split("\n\n--")[0]
+    global PHONE_ON_FILE
+    PHONE_ON_FILE = re.sub(r"\D", "", (reg or {}).get("registered_phone") or "")[-10:]
+    body = F.INVISIBLE.sub(HIDDEN, (raw["body_text"] or "").split("\n\n--")[0])
     atts = []
     for a in raw["attachments"] or []:
-        t = (a.get("text") or "")[:4000]
+        t = F.INVISIBLE.sub(HIDDEN, (a.get("text") or "")[:4000])
         ex = _excerpt(t, last4)
         atts.append({"name": a.get("filename"), "text": t, "excerpt": ex, "excerpt_spans": _spans(ex, last4),
                      "spans": _spans(t, last4)})
@@ -98,9 +116,18 @@ def build(case_id: str) -> dict | None:
         if difflib.SequenceMatcher(None, m["from_domain"], look["registered_domain"]).ratio() >= 0.6:
             sender["diff"] = _domain_diff(m["from_domain"], look["registered_domain"])  # letter-level only when close
     reply_to_mismatch = bool(m["reply_to"]) and m["reply_to"].split("@")[-1].lower() != m["from_domain"]
-    n_claims = db.one("select count(*) n from claims where message_id=%s and field <> 'summary'", mid)["n"]
+    n_claims = db.one("select count(*) n from claims where message_id=%s and field not in ('summary','suspicion')", mid)["n"]
+    first = db.one("select flags from decisions where message_id=%s order by created_at asc limit 1", mid)
+    flags = (first or {}).get("flags") or []
+    reviewer = []
+    for r in db.all_rows("select value from claims where message_id=%s and field='suspicion'", mid):
+        try:
+            reviewer.append(json.loads(r["value"]))
+        except ValueError:
+            pass
     return {"subject": m["subject"], "subject_spans": _spans(m["subject"] or "", last4),
             "body": body, "body_spans": _spans(body, last4), "attachments": atts, "sender": sender,
             "reply_to": m["reply_to"], "reply_to_mismatch": reply_to_mismatch,
             "claims": n_claims, "authority": 0, "registry_last4": last4,
-            "document_issuer": facts.get("document_issuer")}
+            "document_issuer": facts.get("document_issuer"), "tricks": F.explain([f for f in flags if not f.startswith("REVIEW:")]),
+            "reviewer": reviewer}

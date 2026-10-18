@@ -190,11 +190,22 @@ def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None
         agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
         if verdict["next_action"] == "execute_payment":
             _treasurer_turn(case_id, message_id, verdict)
-            _admin_brief(case_id, change_request_id, "no")
+            outcome = "no"
         else:
             held = verdict["reason"] == "change_rejected_held_by_policy"
             db.one("update cases set status=%s where id=%s returning id", "needs_approval" if held else "denied", case_id)
-            _admin_brief(case_id, change_request_id, "no_held" if held else "no_nothing_to_pay")
+            outcome = "no_held" if held else "no_nothing_to_pay"
+        # Tell the real vendor its mailbox may be compromised (phone on file + registered email, never the thread).
+        paid = (db.one("select status from cases where id=%s", case_id) or {}).get("status") == "paid"
+        w = verify.send_compromise_warning(change_request_id, paid)
+        if w["text"] or w["email"]:
+            where = " and ".join(x for x, ok in (("their phone on file", w["text"]), ("their registered email", w["email"])) if ok)
+            agents.post(case_id, "verifier", "action",
+                        f"Warned the vendor by {where} that the mailbox that sent this request may be compromised, "
+                        f"and confirmed what we paid." + (" (Their registered email is the suspicious sender, so the "
+                                                          "warning didn't go there.)" if w.get("email_skipped") else ""),
+                        w, send_email=False)
+        _admin_brief(case_id, change_request_id, outcome)
     elif reply["answer"] != "yes":
         agents.post(case_id, "verifier", "result",
                     f"Couldn't get a clear answer from the phone on file (\"{reply.get('reply', '')[:160]}\"). "
@@ -271,6 +282,15 @@ def _admin_brief(case_id: str, change_request_id: str, outcome: str) -> None:
         text = (f"Airlock needs you: an email asked to move {possessive(cr['name'])} payments to an account ending "
                 f"{cr['new_last4']}. I {how} their phone on file but couldn't get a clear answer. {amt} is on hold and "
                 f"nothing was paid. Please call {cr['name']} yourself before approving anything.")
+    from . import flags as F
+    ctx = verify.request_context(cr)
+    first = db.one("select flags from decisions where message_id=%s order by created_at asc limit 1", cr["source_message_id"])
+    why = F.explain((first or {}).get("flags") or [])
+    text += f" It came from {ctx['sender']} at {ctx['when']}."
+    if why:
+        text += " Why it looked wrong: " + "; ".join(why) + "."
+    if outcome.startswith("no"):
+        text += f" I also warned {cr['name']} that the mailbox may be compromised."
     if _text_admin(text, subject):
         agents.post(case_id, "verifier", "action", "Briefed the admin: " + text.split(": ", 1)[1][:220],
                     send_email=False)
@@ -312,6 +332,11 @@ def _process_locked(message_id: str) -> dict:
     try:
         if public.model_budget_ok(message_id):
             reader.read(message_id)
+            try:  # advisory only; a failure here never blocks or changes a decision
+                from . import reviewer
+                reviewer.review(message_id)
+            except Exception as e:
+                log.warning("reviewer skipped for %s: %s", message_id, e)
         else:
             public.regex_read(message_id)
     except Exception as e:  # fail safe: without claims nothing can be authorized; show it as held

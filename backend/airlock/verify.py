@@ -32,6 +32,60 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+def request_context(cr: dict) -> dict:
+    """Facts about the suspicious request for messages to humans (last 4 digits only, no links)."""
+    from zoneinfo import ZoneInfo
+    m = db.one("select from_address, reply_to, received_at from messages where id=%s", cr["source_message_id"])
+    inv = db.one("select value from claims where message_id=%s and field='invoice_number' limit 1", cr["source_message_id"])
+    ob = db.one("select amount_cents from obligations where id=%s", cr["held_obligation_id"]) if cr["held_obligation_id"] else None
+    when = m["received_at"].astimezone(ZoneInfo("America/Los_Angeles")).strftime("%-I:%M %p")
+    return {"sender": m["from_address"], "reply_to": m["reply_to"], "when": when,
+            "invoice": (inv or {}).get("value") or "an invoice",
+            "amount": f"${ob['amount_cents'] / 100:,.2f}" if ob else "an amount we couldn't match",
+            "ref": "CR-" + str(cr["id"])[:4].upper()}
+
+
+def send_compromise_warning(change_request_id: str, paid_on_file: bool) -> dict:
+    """After the vendor says NO: tell them their mailbox may be compromised. Goes to the phone on file and the
+    registered email, and never to the suspicious sender or its Reply-To (the attacker may control that thread)."""
+    from . import primitive
+    cr = db.one("select * from change_requests where id=%s", change_request_id)
+    vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
+    ctx = request_context(cr)
+    outcome = (f"{ctx['invoice']} was paid to your account on file ending {cr['old_destination_last4']}."
+               if paid_on_file else "Nothing was paid to it.")
+    body = (f"Thanks for confirming. Someone sent that request from {ctx['sender']}, so that mailbox may be compromised. "
+            f"We did NOT pay the new account (ending {cr['new_last4'] or '?'}). {outcome} We recommend resetting that "
+            f"mailbox's password and warning your other customers. Reference {ctx['ref']}.")
+    sent = {"text": False, "email": False}
+    try:
+        with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
+            ident = _identity(ib)
+            msg = f"VENDOR CHECK for {vendor['name']} (follow-up)\n" + body
+            try:
+                ident.send_text(to=vendor["registered_phone"], text=msg)
+            except Exception:
+                ident.send_imessage(to=vendor["registered_phone"], text=msg)
+            sent["text"] = True
+    except Exception as e:
+        log.warning("compromise warning text failed: %s", e)
+    blocked = {(ctx["sender"] or "").lower(), (ctx["reply_to"] or "").lower()}
+    to = (vendor["registered_email"] or "").lower()
+    if to and to not in blocked:
+        try:
+            primitive.send(to=to, subject=f"Security notice from Kiln Supply Co.: {ctx['sender']} may be compromised",
+                           body_text=f"Hi {vendor['name']},\n\n{body}\n\nKiln Supply Co. Accounts Payable (Airlock)",
+                           idempotency_key=f"warn-{change_request_id}")
+            sent["email"] = True
+        except Exception as e:
+            log.warning("compromise warning email failed: %s", e)
+    for channel, ok, addr in (("sms", sent["text"], vendor["registered_phone"]), ("email", sent["email"], to)):
+        if ok:
+            db.one("""insert into outbound_messages (channel, to_address, template, in_reply_to_message_id, body)
+                      values (%s,%s,'compromise_warning',%s,%s) returning id""", channel, addr, cr["source_message_id"], body)
+    return {**sent, "email_skipped": "registered email is the suspicious sender" if to in blocked else None}
+
+
 def send_code(change_request_id: str) -> dict:
     cr = db.one("select * from change_requests where id=%s", change_request_id)
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
@@ -51,9 +105,12 @@ def send_code(change_request_id: str) -> dict:
     code = f"{secrets.randbelow(10**6):06d}"
     possessive = vendor["name"] + ("'" if vendor["name"].endswith("s") else "'s")
     new = cr["new_destination"].replace("account(s) ending", "an account ending")
-    text = (f"VENDOR CHECK for {vendor['name']}\nThis is Kiln Supply Co. accounts payable. We received an email asking "
-            f"to send {possessive} payments to {new}. Did you request this?\nReply YES {code} to confirm, or NO if you "
-            "did not.")
+    ctx = request_context(cr)
+    text = (f"VENDOR CHECK for {vendor['name']}\nThis is Kiln Supply Co. accounts payable. At {ctx['when']} we got an "
+            f"email from {ctx['sender']} asking us to pay {ctx['invoice']} ({ctx['amount']}) to a new bank account "
+            f"ending {cr['new_last4'] or '?'}. The account we have on file for {vendor['name']} ends "
+            f"{cr['old_destination_last4']}. We never change bank details based on email alone.\n"
+            f"Did {vendor['name']} change its bank account? Reply YES {code} if you did, or NO if you didn't.")
     phone = vendor["registered_phone"]  # the phone on file, never a number from the email
     if (config.get("AIRLOCK_VERIFY_CHANNEL") or "text") == "call":
         return _place_call(cr, vendor, new, phone)

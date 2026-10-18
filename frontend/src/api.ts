@@ -82,7 +82,8 @@ export type XRayData = { subject: string | null; subject_spans: XSpan[]; body: s
   sender: { address: string; domain: string; registered: boolean; vendor: string | null; authenticated: boolean | null;
             imitates?: string; diff?: { text: string; changed: boolean }[] };
   reply_to: string | null; reply_to_mismatch: boolean; claims: number; authority: number;
-  registry_last4: string | null; document_issuer: string | null };
+  registry_last4: string | null; document_issuer: string | null; tricks: string[];
+  reviewer: { technique: string; quote: string; why: string }[] };
 
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),

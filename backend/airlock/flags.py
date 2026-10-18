@@ -15,6 +15,19 @@ DUE_NOW = re.compile(r"\b(due on receipt|due immediately|payable immediately|net
 ACCOUNT = re.compile(
     r"(?:account(?: number)?(?: ending(?: in)?)?|acct\.?)\s*(?:#|no\.?|:)?\s*([0-9][0-9\- ]{2,20}[0-9])", re.I)
 ROUTING = re.compile(r"routing\s*(?:#|no\.?|number|:)?\s*(\d{9})", re.I)
+CHANNEL_AVOIDANCE = re.compile(
+    r"(don'?t call|do not call|no need to call|phones? (are|is) (down|out)|(lines|phone lines) are down|"
+    r"(reply|respond|contact us) (only )?by email|email only|unable to take calls|can'?t take calls|"
+    r"won'?t be reachable by phone|not reachable by phone)", re.I)
+SECRECY = re.compile(r"(keep this (between us|confidential|quiet)|don'?t (tell|mention|loop in)|do not (tell|mention|share)|"
+                     r"confidential (matter|request)|discreet|off the record)", re.I)
+EXEC_CLAIM = re.compile(r"\b(ceo|cfo|controller|president|owner|director|vp)\b[\s\S]{0,40}\b(approved|authorized|signed off|"
+                        r"asked|requested|wants)", re.I)
+PAYMENT_LINK = re.compile(r"https?://\S+", re.I)
+LINK_CONTEXT = re.compile(r"(update|change|confirm|verify|enter|submit)[\s\S]{0,40}(payment|bank|banking|remittance|"
+                          r"account|details)|pay (here|online|now)", re.I)
+PHONE = re.compile(r"(?:\+?1[\s.-]{0,2})?(?:\((\d{3})\)\s{0,2}|(\d{3})[\s.-]{1,3})(\d{3})[\s.-]{1,3}(\d{4})\b")
+INVISIBLE = re.compile("[\u200b-\u200f\u2060-\u2064\ufeff\U000e0000-\U000e007f]")
 AGENT_DIRECTED = re.compile(
     r"(automated|accounts payable agent|\bAI\b|assistant|language model|ignore (all |previous )?|"
     r"this instruction|overrides? (records|instructions)|route this payment|system notice)", re.I)
@@ -42,6 +55,10 @@ class Evidence:
     claimed_cents: int | None
     invoice_number: str | None
     other_vendors: list[dict] = field(default_factory=list)  # registry rows for every vendor except the routed one
+    display_name: str = ""             # From display name (attacker-controlled)
+    first_time_sender: bool = False    # this exact address never wrote before and isn't the registered contact
+    auto_pay_limit_cents: int | None = None
+    raw_text: str = ""                 # body + attachments before invisible characters were stripped
     flags: list[str] = field(default_factory=list)
 
 
@@ -99,6 +116,36 @@ def issuer_mismatch(e: Evidence) -> dict | None:
     if any(n in head for n in _names(e.vendor)):
         return None
     return next((v for v in e.other_vendors if any(n in head for n in _names(v))), None)
+
+
+CONFUSABLE = str.maketrans({"0": "o", "1": "l", "i": "l", "|": "l", "5": "s", "3": "e"})
+
+
+def _skeleton(domain: str) -> str:
+    d = domain.lower().replace("rn", "m").replace("vv", "w")
+    return d.translate(CONFUSABLE)
+
+
+def homoglyph_of(domain: str, vendors: list[dict]) -> dict | None:
+    """A sender domain that only differs from a registered one by look-alike characters (or punycode)."""
+    for v in vendors:
+        reg = v["registered_domain"].lower()
+        if domain.lower() != reg and (_skeleton(domain) == _skeleton(reg) or
+                                      (domain.startswith("xn--") or ".xn--" in domain)):
+            return v
+    return None
+
+
+def _name_near_miss(claimed: str, real: str) -> bool:
+    import difflib
+    a, b = re.sub(r"[^a-z ]", "", claimed.lower()).strip(), re.sub(r"[^a-z ]", "", real.lower()).strip()
+    if not a or b in a or a in b:
+        return False
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.6
+
+
+def _invoice_shape(n: str) -> str:
+    return re.sub(r"\d", "9", re.sub(r"[A-Za-z]", "A", n))
 
 
 def compute(e: Evidence) -> list[str]:
@@ -160,4 +207,96 @@ def compute(e: Evidence) -> list[str]:
     # Lookalike senders get denied regardless, so NO_PO only describes real or brand-new vendors.
     if not e.claims.get("po_number") and (e.vendor is not None or "NEW_VENDOR" in f):
         f.append("NO_PO")
+    f += extra_signals(e)
     return f
+
+
+def extra_signals(e: Evidence) -> list[str]:
+    """Broader trick detection. Deterministic; escalate-only (see policy.ESCALATE_TO_HOLD for which ones hold)."""
+    f: list[str] = []
+    email_text = f"{e.subject}\n{e.body}"
+    every = email_text + "\n" + e.attachment_text
+    if e.raw_text and INVISIBLE.search(e.raw_text):
+        f.append("INVISIBLE_UNICODE")
+    if CHANNEL_AVOIDANCE.search(every):
+        f.append("CHANNEL_AVOIDANCE")
+    if SECRECY.search(every):
+        f.append("SECRECY_LANGUAGE")
+    if EXEC_CLAIM.search(every):
+        f.append("EXEC_APPROVAL_CLAIM")
+    if PAYMENT_LINK.search(every) and LINK_CONTEXT.search(every):
+        f.append("PAYMENT_LINK")
+    target = e.vendor or e.lookalike_of
+    if target is not None:
+        on_file = re.sub(r"\D", "", target.get("registered_phone") or "")[-10:]
+        phones = {"".join(g for g in m.groups() if g) for m in PHONE.finditer(every)}
+        if any(p != on_file for p in phones):
+            f.append("NEW_CONTACT_IN_EMAIL")
+    if e.vendor is not None:
+        names = [c["value"] for c in e.claims.get("vendor_name", [])] + ([e.display_name] if e.display_name else [])
+        if any(_name_near_miss(n, e.vendor["name"]) for n in names):
+            f.append("VENDOR_NAME_MISMATCH")
+        if e.first_time_sender:
+            f.append("FIRST_TIME_SENDER")
+        if e.invoice_number and e.history:
+            shapes = {_invoice_shape(h["invoice_number"]) for h in e.history if h.get("invoice_number")}
+            if shapes and _invoice_shape(e.invoice_number) not in shapes and not re.sub(r"-R\d+$", "", e.invoice_number) in {
+                    h["invoice_number"] for h in e.history}:
+                base = _invoice_shape(re.sub(r"-R\d+$", "", e.invoice_number))
+                if base not in shapes:
+                    f.append("INVOICE_NUMBER_PATTERN")
+    if e.vendor is None:
+        h = homoglyph_of(e.from_domain, e.other_vendors)
+        if h is not None:
+            f.append(f"HOMOGLYPH_DOMAIN:{h['registered_domain']}")
+    if e.vendor is None and e.display_name:
+        for v in e.other_vendors + ([e.lookalike_of] if e.lookalike_of else []):
+            if v and v["name"].lower().split()[0] in e.display_name.lower():
+                f.append(f"DISPLAY_NAME_MISMATCH:{v['name']}")
+                break
+    if (e.auto_pay_limit_cents and e.claimed_cents
+            and 0.95 * e.auto_pay_limit_cents <= e.claimed_cents < e.auto_pay_limit_cents):
+        f.append("THRESHOLD_DODGING")
+    return f
+
+
+EXPLAIN = {
+    "REMIT_TO_CHANGED": "asked to pay an account that isn't the one on file",
+    "BANK_CHANGE_LANGUAGE": "a 'we changed banks' story",
+    "EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT": "text in the attachment aimed at an automated agent",
+    "LOOKALIKE_DOMAIN": "a look-alike sender domain",
+    "HOMOGLYPH_DOMAIN": "a sender domain using look-alike characters",
+    "REPLY_TO_MISMATCH": "replies redirected to a different address",
+    "URGENCY_LANGUAGE": "pressure to pay fast",
+    "CHANNEL_AVOIDANCE": "asked us not to call / email only",
+    "SECRECY_LANGUAGE": "asked to keep it quiet",
+    "EXEC_APPROVAL_CLAIM": "claims an executive approved it",
+    "PAYMENT_LINK": "a link to 'update payment details'",
+    "VENDOR_NAME_MISMATCH": "the company name is slightly off",
+    "DISPLAY_NAME_MISMATCH": "a vendor's name on a non-vendor address",
+    "NEW_CONTACT_IN_EMAIL": "a phone number that isn't the one on file (never used)",
+    "FIRST_TIME_SENDER": "first email ever from this address",
+    "INVOICE_NUMBER_PATTERN": "invoice number doesn't match the vendor's usual format",
+    "THRESHOLD_DODGING": "amount just under the auto-pay limit",
+    "INVISIBLE_UNICODE": "hidden invisible characters",
+    "ISSUER_MISMATCH": "the attached invoice is another company's",
+    "DUPLICATE_INVOICE": "an invoice that was already paid",
+    "DATA_REQUEST": "asks for internal documents",
+    "CONTRACT_PRICE_MISMATCH": "price doesn't match the contract",
+    "AMOUNT_DEVIATION": "unusual amount for this vendor",
+    "NEW_LINE_ITEM": "a line item not in the contract",
+    "TERMS_VIOLATION": "payment terms that break the contract",
+    "NEW_VENDOR": "not a registered vendor",
+    "NO_PO": "no purchase order",
+}
+
+
+def explain(flags: list[str]) -> list[str]:
+    out = []
+    for f in flags:
+        key = f.split(":")[0]
+        if key == "REVIEW":
+            out.append(f"reviewer noticed {f.split(':', 1)[1].lower().replace('_', ' ')}")
+        elif key in EXPLAIN and EXPLAIN[key] not in out:
+            out.append(EXPLAIN[key])
+    return out
