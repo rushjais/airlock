@@ -31,6 +31,16 @@ const server = new MCPServer({
   icons: [{ src: "icon.svg", mimeType: "image/svg+xml", sizes: ["512x512"] }],
 });
 
+// Clients must present a bearer token: the server URL is public, so without this anyone could read the AP inbox or open
+// cases. (It still couldn't move money anywhere but the accounts on file, but it shouldn't be callable by strangers.)
+const CLIENT_TOKEN = process.env.AIRLOCK_MCP_CLIENT_TOKEN ?? "";
+server.use("/mcp*", async (c, next) => {
+  if (!CLIENT_TOKEN) return c.text("Airlock MCP: server misconfigured (no client token set)", 503);
+  const got = c.req.header("authorization") ?? "";
+  if (got !== `Bearer ${CLIENT_TOKEN}`) return c.text("Unauthorized: Airlock MCP requires a bearer token", 401);
+  await next();
+});
+
 async function call(method: "GET" | "POST", path: string, body?: unknown) {
   const r = await fetch(`${API}${path}`, {
     method,

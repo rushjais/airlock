@@ -110,6 +110,14 @@ def send_code(change_request_id: str) -> dict:
     from . import public
     if not public.verification_budget_ok():  # public mode: at most 3 phone checks an hour
         return {"ok": False, "reason": "verification_rate_limited"}
+    # One active check per vendor: a bare "NO" from the phone on file must refer to exactly one request.
+    other = db.one("""select id from change_requests where vendor_id=%s and id <> %s and status='pending_verification'
+                      and evidence ? 'contact_claimed_at'
+                      and (evidence->>'contact_claimed_at')::timestamptz > now() - interval '15 minutes'""",
+                   cr["vendor_id"], change_request_id)
+    if other:
+        return {"ok": False, "reason": "another_verification_pending",
+                "detail": "This vendor is already being asked about another change; this one stays held."}
     # One contact per change request, claimed atomically: a repeated tool call can't text the vendor twice
     # (a second text would also replace the first code).
     claimed = db.one("""update change_requests set evidence = evidence || jsonb_build_object('contact_claimed_at', now())

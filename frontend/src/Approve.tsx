@@ -25,6 +25,7 @@ export default function Approve() {
   const [d, setD] = useState<Details | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
+  const [passcode, setPasscode] = useState("");
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -93,9 +94,12 @@ export default function Approve() {
           <label className="block text-[17px] mb-2" htmlFor="last4">Type the last 4 digits of the new account</label>
           <input id="last4" value={typed} onChange={(e) => setTyped(e.target.value.replace(/\D/g, "").slice(0, 4))}
                  className="num text-[28px] w-40 px-3 py-2 rounded-md border-2 border-line bg-raised mb-5" inputMode="numeric" />
+          <label className="block text-[17px] mb-2" htmlFor="passcode">Admin passcode <span className="text-muted text-[14px]">(the link alone can't approve)</span></label>
+          <input id="passcode" type="password" autoComplete="off" value={passcode} onChange={(e) => setPasscode(e.target.value)}
+                 className="num text-[22px] w-56 px-3 py-2 rounded-md border-2 border-line bg-raised mb-5 block" />
           <div className="flex gap-3">
-            <button disabled={busy || typed.length !== 4 || (d.flags.length > 0 && !ack)}
-              onClick={() => post("approve", { typed_last4: typed, acknowledged_flags: ack, seconds_on_page: (Date.now() - opened.current) / 1000 })}
+            <button disabled={busy || typed.length !== 4 || !passcode || (d.flags.length > 0 && !ack)}
+              onClick={() => post("approve", { typed_last4: typed, passcode, acknowledged_flags: ack, seconds_on_page: (Date.now() - opened.current) / 1000 })}
               className="px-5 py-2.5 rounded-md text-[18px] font-bold bg-text text-bg disabled:opacity-40">Approve new account</button>
             <button disabled={busy} onClick={() => post("reject", {})}
               className="px-5 py-2.5 rounded-md text-[18px] font-bold border-2 border-line">Reject and pay the account on file</button>
@@ -110,7 +114,7 @@ export default function Approve() {
               <h2 className="text-[22px] font-bold text-held mb-2">This was approved very quickly</h2>
               <p className="text-[17px] mb-4">The request still carries risk flags. Payment won't release until you confirm again.</p>
               <div className="flex gap-3">
-                <button disabled={busy} onClick={() => post("reconfirm", { authorization_id: a.id })}
+                <button disabled={busy} onClick={() => post("reconfirm", { authorization_id: a.id, passcode })}
                   className="px-5 py-2.5 rounded-md text-[18px] font-bold bg-text text-bg">Yes, release payment</button>
                 <button disabled={busy} onClick={() => post("cancel", { authorization_id: a.id })}
                   className="px-5 py-2.5 rounded-md text-[18px] font-bold border-2 border-bad text-bad">Cancel payment</button>

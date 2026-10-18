@@ -2,7 +2,7 @@
 
 Invariant 7: a bank change needs (1) the vendor's confirmation through the phone already on file and (2) an
 authenticated admin approval bound to (vendor, old destination, new destination, registry_version, expiry).
-Then the held invoice is SCHEDULED, not paid: an undo window with a Cancel button, and a second confirmation if
+Then the held invoice is SCHEDULED, not paid: a release delay with a Cancel button, and a second confirmation if
 the approval was suspiciously fast while risk flags remain. The executor enforces both (release_at,
 needs_reconfirm), so the UI can't skip them.
 
@@ -33,6 +33,14 @@ def approval_link(cr_id: str) -> str:
     exp = int((datetime.now(timezone.utc) + LINK_TTL).timestamp())
     base = config.get("APP_BASE_URL", "http://localhost:5173")
     return f"{base}/approve/{cr_id}?exp={exp}&t={_sig(cr_id, exp)}"
+
+
+def passcode_ok(passcode: str | None) -> bool:
+    """Step-up admin authentication: the signed link proves the server sent it; the admin passcode proves the person
+    approving is the admin (a forwarded or leaked link alone can't approve). Fails closed if no passcode is set."""
+    expected = config.get("ADMIN_PASSCODE") or ""
+    return bool(expected) and hmac.compare_digest(hashlib.sha256((passcode or "").encode()).hexdigest(),
+                                                  hashlib.sha256(expected.encode()).hexdigest())
 
 
 def check(cr_id: str, exp: int, token: str) -> bool:
@@ -92,7 +100,7 @@ def approve(cr_id: str, admin: str, typed_last4: str, acknowledged_flags: bool, 
     case = db.one("select id from cases where source_message_id=%s", cr["source_message_id"])
     if case:
         msg = (f"Admin approved the new account ending {cr['new_last4']} (registry v{vendor['registry_version'] + 1}). "
-               f"The held invoice is scheduled, not paid: {company['undo_window_seconds']}s undo window.")
+               f"The held invoice is scheduled, not paid: {company['undo_window_seconds']}s release delay; cancel anytime before then.")
         if fast:
             msg += f" Approved in {seconds_on_page:.0f}s with risk flags still present, so it won't release until the admin confirms again."
         agents.post(case["id"], "auditor", "verdict", msg)
@@ -118,7 +126,7 @@ def cancel(auth_id: str, admin: str) -> dict:
     with db.tx() as conn:
         a = conn.execute("""update payment_authorizations set status='invalidated', last_error=%s
                             where id=%s and status='scheduled' returning *""",
-                         (f"cancelled by {admin} during undo window", auth_id)).fetchone()
+                         (f"cancelled by {admin} before release", auth_id)).fetchone()
         if a is None:
             return {"ok": False, "reason": "not_in_undo_window"}
         conn.execute("update obligations set status='accepted' where id=%s and status='reserved'", (a["obligation_id"],))
@@ -140,7 +148,7 @@ def _release_due() -> None:
         case = db.one("select id from cases where source_message_id=%s", a["source_message_id"])
         if case and result.get("ok"):
             agents.post(case["id"], "treasurer", "result",
-                        f"Undo window passed with no cancel. Released ${result['amount_cents'] / 100:,.2f} to the account "
+                        f"Release delay passed with no cancel. Released ${result['amount_cents'] / 100:,.2f} to the account "
                         f"now on file. Transfer {result['transfer_id']}.", result)
             db.one("update cases set status='paid' where id=%s returning id", case["id"])
 

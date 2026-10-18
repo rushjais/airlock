@@ -133,3 +133,30 @@ def test_vendor_is_contacted_once_per_change_request(monkeypatch):
     again = verify.send_code(cr)
     assert not again["ok"] and again["reason"] == "verification_already_sent"
     assert len(sent) == 1
+
+
+def test_only_one_active_verification_per_vendor(monkeypatch):
+    from airlock import verify
+
+    class FakeIdent:
+        def send_text(self, to, text): pass
+
+    class FakeInkbox:
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(verify, "Inkbox", FakeInkbox)
+    monkeypatch.setattr(verify, "_identity", lambda ib, voice=False: FakeIdent())
+    first, second = _held_change(), _held_change()
+    assert verify.send_code(first)["ok"]
+    assert verify.send_code(second)["reason"] == "another_verification_pending"
+
+
+def test_approval_needs_admin_passcode(monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSCODE", "424242")
+    assert approvals.passcode_ok("424242")
+    assert not approvals.passcode_ok("")
+    assert not approvals.passcode_ok("000000")
+    monkeypatch.setenv("ADMIN_PASSCODE", "")
+    assert not approvals.passcode_ok("anything")  # fails closed when unset

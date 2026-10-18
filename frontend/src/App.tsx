@@ -621,7 +621,7 @@ function MoneyPanel({ cases }: { cases: CaseRow[] }) {
         <h2 className="text-[19px] font-bold mb-3">Spending controls</h2>
         <dl className="space-y-3 text-[16px]">
           <div className="flex justify-between gap-3"><dt className="text-muted">Pays automatically up to</dt><dd className="num font-bold">{usd(ctl?.auto_pay_limit_cents ?? 0)}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-muted">Undo window after approval</dt><dd className="num font-bold">{ctl?.undo_window_seconds ?? 0}s</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-muted">Cancel window before release</dt><dd className="num font-bold">{ctl?.undo_window_seconds ?? 0}s</dd></div>
           <div className="flex justify-between gap-3"><dt className="text-muted">Waiting for a human</dt>
             <dd className={`num font-bold ${(ctl?.approval_queue ?? 0) > 0 ? "text-held" : ""}`}>{ctl?.approval_queue ?? 0}</dd></div>
         </dl>

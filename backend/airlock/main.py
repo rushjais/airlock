@@ -288,7 +288,7 @@ def _verified_action(message_id) -> dict | None:
              "waiting" if cr["status"] == "pending_verification" else cr["status"])
     outcome = {"rejected": "Change rejected. The invoice can only pay the account on file.",
                "verified": "Vendor confirmed. Still needs the admin's approval on the signed page.",
-               "approved": "Admin approved. New account scheduled behind the undo window.",
+               "approved": "Admin approved. New account scheduled; it releases after the cancel window.",
                "unresolved": "No clear answer. Held; the admin was asked to call the vendor.",
                "pending_verification": "Waiting for the vendor's answer. Nothing moves meanwhile.",
                "superseded": "Vendor records changed since; this request no longer applies."}.get(cr["status"], cr["status"])
@@ -351,12 +351,14 @@ class ApprovalAuth(BaseModel):
 
 class ApproveBody(ApprovalAuth):
     typed_last4: str
+    passcode: str = ""
     acknowledged_flags: bool = False
     seconds_on_page: float = 0
 
 
 class AuthBody(ApprovalAuth):
     authorization_id: str
+    passcode: str = ""
 
 
 def _admin(cr_id: str, body: ApprovalAuth) -> str:
@@ -377,7 +379,11 @@ def approval_details(cr_id: str, exp: int, t: str):
 
 @app.post("/api/approvals/{cr_id}/approve")
 def approval_approve(cr_id: str, body: ApproveBody):
-    return approvals.approve(cr_id, _admin(cr_id, body), body.typed_last4, body.acknowledged_flags, body.seconds_on_page)
+    admin = _admin(cr_id, body)
+    if not approvals.passcode_ok(body.passcode):
+        return {"ok": False, "reason": "admin_passcode_required",
+                "detail": "Enter the admin passcode. The link alone can't approve a bank change."}
+    return approvals.approve(cr_id, admin, body.typed_last4, body.acknowledged_flags, body.seconds_on_page)
 
 
 @app.post("/api/approvals/{cr_id}/reject")
@@ -396,7 +402,10 @@ def approval_cancel(cr_id: str, body: AuthBody):
 
 @app.post("/api/approvals/{cr_id}/reconfirm")
 def approval_reconfirm(cr_id: str, body: AuthBody):
-    return approvals.reconfirm(body.authorization_id, _admin(cr_id, body))
+    admin = _admin(cr_id, body)
+    if not approvals.passcode_ok(body.passcode):
+        return {"ok": False, "reason": "admin_passcode_required"}
+    return approvals.reconfirm(body.authorization_id, admin)
 
 
 @app.on_event("startup")
