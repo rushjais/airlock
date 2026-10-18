@@ -234,6 +234,7 @@ def _text_admin(text: str, subject: str | None = None) -> bool:
         try:
             primitive.send(to=email, subject=subject or "Airlock update", body_text=text + "\n\n-- Airlock (automated). "
                            "Replies to this email never approve anything.", from_addr=f"Airlock <{config.AGENT_INBOX}>")
+            verify.log_text("email", email, "admin_brief_email", f"{subject or 'Airlock update'}: {text}")
         except Exception as e:
             log.warning("admin email failed: %s", e)
     phone = config.get("DEMO_ADMIN_PHONE")
@@ -245,8 +246,10 @@ def _text_admin(text: str, subject: str | None = None) -> bool:
             ident = ib.get_identity(config.get("INKBOX_HANDLE", "airlock"))
             try:
                 ident.send_text(to=phone, text="FOR YOU (Kiln admin)\n" + text)
+                verify.log_text("sms", phone, "admin_brief", text)
             except Exception:
                 ident.send_imessage(to=phone, text="FOR YOU (Kiln admin)\n" + text)
+                verify.log_text("imessage", phone, "admin_brief", text)
         return True
     except Exception as e:
         log.warning("admin text failed: %s", e)

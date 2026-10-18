@@ -88,6 +88,12 @@ export type XRayData = { subject: string | null; subject_spans: XSpan[]; body: s
   registry_last4: string | null; document_issuer: string | null; tricks: string[];
   reviewer: { technique: string; quote: string; why: string }[] };
 
+export type MailWho = { label: string; party: string; name?: string };
+export type MailRow = { at: string; via: "Primitive" | "Inkbox"; channel: string; from: MailWho; to: MailWho[]; cc?: string[];
+  subject: string | null; case_id: string | null; trust: string; what: string };
+export type MailFeed = { rows: MailRow[]; emails: number; inkbox: number; identities: number;
+  primitive_identities: string[]; inkbox_identities: string[] };
+
 export const api = {
   cases: () => get<CaseRow[]>("/api/cases"),
   case: (id: string) => get<CaseDetail>(`/api/cases/${id}`),
@@ -100,6 +106,7 @@ export const api = {
     fetch("/api/controls/after-rejected-change", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value }) }).then((r) => r.ok),
   xray: (id: string) => get<XRayData>(`/api/cases/${id}/xray`),
+  mail: () => get<MailFeed>("/api/mail"),
   monthEnd: () => fetch("/api/demo/monthend", { method: "POST" }).then((r) => r.ok),
   monthEndStatus: () => get<MonthEnd>("/api/monthend"),
   corvid: () => get<VendorBooks>("/api/vendor/corvid/books"),

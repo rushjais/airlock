@@ -121,3 +121,11 @@ def test_compromise_warning_never_goes_to_the_suspicious_sender(monkeypatch):
 def test_stale_change_request_id_gets_a_clean_answer():
     assert verify.send_code(str(uuid.uuid4()))["reason"] == "unknown_change_request"
     assert verify.send_code("not-a-uuid")["reason"] == "unknown_change_request"
+
+
+def test_treasurer_never_sees_reviewer_findings():
+    mid = message_01()
+    _reviewer_says(mid, "impersonation", "Invoice")
+    v = policy.propose_payment(mid)
+    assert "REVIEW:IMPERSONATION" in v["flags"]
+    assert not any(f.startswith("REVIEW:") for f in treasurer.compact(v)["flags"])

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   api, usd, type Card, type CaseDetail, type CaseRow, type Controls, type ModeResult, type Money, type Post,
-  type MonthEnd, type Results, type Summary, type VendorBooks, type XRayData, type XSpan,
+  type MailFeed, type MailWho, type MonthEnd, type Results, type Summary, type VendorBooks, type XRayData, type XSpan,
 } from "./api";
 
 const POLL_MS = 1500;
@@ -43,7 +43,7 @@ const STATUS: Record<CaseRow["status"], { label: string; cls: string }> = {
 
 export default function App() {
   const [light, toggleTheme] = useTheme();
-  const [view, setView] = useState<"live" | "results">("live");
+  const [view, setView] = useState<"live" | "mail" | "results">("live");
   const cases = usePoll(api.cases) ?? [];
   const [picked, setPicked] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
@@ -53,7 +53,7 @@ export default function App() {
     <div className={`h-full grid ${DEMO ? "grid-rows-[auto_auto_1fr]" : "grid-rows-[auto_1fr]"} bg-bg`}>
       <TopBar view={view} onView={setView} light={light} onTheme={toggleTheme} />
       {DEMO && <DemoButtons />}
-      {view === "results" ? <ResultsView /> : (
+      {view === "results" ? <ResultsView /> : view === "mail" ? <MailView /> : (
         <main className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(300px,0.72fr)] gap-4 p-4 min-h-0">
           <Threads cases={cases} selected={selected} follow={follow}
                    onPick={(id) => { setPicked(id); setFollow(false); }} onFollow={() => setFollow(true)} />
@@ -67,7 +67,7 @@ export default function App() {
 
 /* ---------- Top bar: totals that stay visible the whole demo ---------- */
 
-function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") => void; light: boolean; onTheme: () => void }) {
+function TopBar(p: { view: "live" | "mail" | "results"; onView: (v: "live" | "mail" | "results") => void; light: boolean; onTheme: () => void }) {
   const s = usePoll<Summary>(api.summary);
   const [resetting, setResetting] = useState(false);
   const reset = async () => {
@@ -76,7 +76,7 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
     await api.reset();
     setResetting(false);
   };
-  const tab = (v: "live" | "results", label: string) => (
+  const tab = (v: "live" | "mail" | "results", label: string) => (
     <button onClick={() => p.onView(v)} aria-pressed={p.view === v}
       className={`px-3.5 py-1.5 rounded-md text-[15px] font-semibold border ${p.view === v ? "bg-text text-bg border-text" : "border-line text-muted hover:text-text"}`}>
       {label}
@@ -94,7 +94,7 @@ function TopBar(p: { view: "live" | "results"; onView: (v: "live" | "results") =
         <Total label="Stolen" cents={s?.stolen_cents ?? 0} cls={(s?.stolen_cents ?? 0) > 0 ? "text-bad" : "text-ok"} big />
       </dl>
       <div className="flex items-center gap-2">
-        {tab("live", "Live")}{tab("results", "Measured results")}
+        {tab("live", "Live")}{tab("mail", "Mail")}{tab("results", "Measured results")}
         <button onClick={p.onTheme} className="px-3 py-1.5 rounded-md text-[15px] font-semibold border border-line text-muted hover:text-text">
           {p.light ? "Dark" : "Light"}
         </button>
@@ -454,7 +454,7 @@ function XRay({ caseId }: { caseId: string | null }) {
           <button onClick={() => setOn(true)} className={`px-2.5 py-0.5 rounded text-[13px] font-semibold ${on ? "bg-text text-bg" : "text-muted"}`}>X-ray</button>
         </div>
       </div>
-      <p className="text-[13px] text-muted mb-4">Received by Primitive at ap@. {on ? `${hits} things Airlock's checks marked, from vendor records and fixed rules; no model involved.` : "What a human or a naive agent sees."}</p>
+      <p className="text-[13px] text-muted mb-4">Received by Primitive at ap@. {on ? `${hits} ${hits === 1 ? "thing" : "things"} Airlock's checks marked, from vendor records and fixed rules; no model involved.` : "What a human or a naive agent sees."}</p>
 
       {on && x.tricks.length > 0 && (
         <div className="mb-4 rounded-md border-2 border-bad/50 bg-bad-soft/40 px-3 py-2.5">
@@ -693,6 +693,69 @@ function VendorBooksView() {
       </ol>
       {latest && <p className="text-[13px] text-muted mt-3">Latest: {latest.event}</p>}
     </div>
+  );
+}
+
+/* ---------- Mail: every message between every identity (Primitive email + Inkbox phone) ---------- */
+
+const PARTY: Record<string, string> = {
+  agent: "bg-raised text-text border-text/30", thread: "bg-raised text-muted border-line", kiln: "bg-raised text-text border-text/30",
+  vendor: "bg-held-soft text-held border-held/40", vendor_agent: "bg-held-soft text-held border-held/40",
+  outside: "bg-bad-soft text-bad border-bad/40", inkbox: "bg-ok-soft text-ok border-ok/40",
+  vendor_phone: "bg-held-soft text-held border-held/40", admin: "bg-raised text-text border-line",
+};
+
+function MailView() {
+  const f = usePoll<MailFeed>(api.mail);
+  const chip = (w: MailWho) => (
+    <span className={`num inline-block max-w-[260px] truncate align-bottom rounded border px-1.5 py-px text-[12.5px] ${PARTY[w.party] ?? ""}`}
+          title={w.label}>{w.name ? `${w.name} · ${w.label}` : w.label}</span>
+  );
+  const trust: Record<string, string> = { signed: "bg-ok-soft text-ok", untrusted: "bg-bad-soft text-bad", template: "bg-raised text-muted", "read-only": "bg-raised text-muted" };
+  return (
+    <main className="min-h-0 overflow-y-auto px-6 py-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-5">
+        <section>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 mb-3">
+            <h2 className="text-[21px] font-bold">Every message, every identity</h2>
+            <span className="text-[14px] text-muted"><span className="num font-bold text-text">{f?.emails ?? 0}</span> emails via Primitive ·{" "}
+              <span className="num font-bold text-text">{f?.inkbox ?? 0}</span> texts and calls via Inkbox ·{" "}
+              <span className="num font-bold text-text">{f?.identities ?? 0}</span> identities talking</span>
+          </div>
+          {!f?.rows.length && <p className="text-muted text-[16px] py-8">No messages yet. Run month-end or send an invoice to ap@.</p>}
+          <ol className="space-y-1.5">
+            {(f?.rows ?? []).map((r, i) => (
+              <li key={i} className={`grid grid-cols-[64px_92px_minmax(0,1fr)] items-start gap-3 rounded-md border border-line bg-panel px-3 py-2 ${isFresh(r.at) ? "fresh" : ""}`}>
+                <span className="num text-[12px] text-muted pt-0.5">{time(r.at)}</span>
+                <span className={`text-[12px] font-bold pt-0.5 ${r.via === "Inkbox" ? "text-ok" : "text-text"}`}>
+                  {r.via === "Inkbox" ? `Inkbox ${r.channel}` : "Primitive email"}</span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {chip(r.from)}<span className="text-muted text-[13px]">→</span>{r.to.map((t, j) => <span key={j}>{chip(t)}</span>)}
+                    {r.cc && r.cc.length > 0 && <span className="num text-[11.5px] text-muted">cc {r.cc.join(", ")}</span>}
+                    <span className={`ml-auto rounded px-1.5 py-px text-[11px] font-semibold ${trust[r.trust] ?? ""}`}>{r.trust}</span>
+                  </div>
+                  <div className="text-[13.5px] mt-1 truncate"><span className="font-semibold">{r.subject}</span>
+                    <span className="text-muted"> · {r.what}</span></div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+        <aside className="space-y-4 lg:sticky lg:top-0 self-start">
+          <div className="rounded-lg border-2 border-line bg-panel p-4">
+            <h3 className="text-[16px] font-bold mb-2">Primitive identities</h3>
+            <ul className="space-y-1 num text-[13px]">{(f?.primitive_identities ?? []).map((x) => <li key={x}>{x}</li>)}</ul>
+            <p className="text-[12.5px] text-muted mt-2">One domain. Each agent has one power; internal mail is HMAC-signed, so an outsider can't pose as an agent.</p>
+          </div>
+          <div className="rounded-lg border-2 border-line bg-panel p-4">
+            <h3 className="text-[16px] font-bold mb-2">Inkbox identities</h3>
+            <ul className="space-y-1 num text-[13px]">{(f?.inkbox_identities ?? []).map((x) => <li key={x}>{x}</li>)}</ul>
+            <p className="text-[12.5px] text-muted mt-2">The channel an email can't fake: only phones already on file (vendor checks, compromise warnings) and the admin's own phone.</p>
+          </div>
+        </aside>
+      </div>
+    </main>
   );
 }
 

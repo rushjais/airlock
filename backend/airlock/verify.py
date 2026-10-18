@@ -32,6 +32,15 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+def log_text(channel: str, to: str, template: str, body: str, message_id=None) -> None:
+    """Audit every Inkbox message (invariant 12) so the Mail view shows phone traffic next to email."""
+    try:
+        db.one("""insert into outbound_messages (channel, to_address, template, in_reply_to_message_id, body)
+                  values (%s,%s,%s,%s,%s) returning id""", channel, to, template, message_id, body)
+    except Exception as e:
+        log.warning("could not log %s: %s", template, e)
+
+
 def request_context(cr: dict) -> dict:
     """Facts about the suspicious request for messages to humans (last 4 digits only, no links)."""
     from zoneinfo import ZoneInfo
@@ -130,6 +139,7 @@ def send_code(change_request_id: str) -> dict:
             log.info("sms unavailable (%s); using imessage", e)
             channel = "imessage"
             ident.send_imessage(to=phone, text=text)
+    log_text(channel, phone, "vendor_verification", text.replace(code, "••••••"), cr["source_message_id"])
     sent_at = datetime.now(timezone.utc)
     db.one("""update change_requests set otp_hash=%s, otp_expires_at=%s, otp_used=false,
               evidence = evidence || %s::jsonb where id=%s returning id""",
@@ -161,6 +171,8 @@ def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
         "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         call = _identity(ib, voice=True).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
+    log_text("voice", phone, "vendor_verification_call", "Voice AI call to the phone on file asking whether "
+             f"{vendor['name']} changed its bank account.", cr["source_message_id"])
     sent_at = datetime.now(timezone.utc)
     db.one("""update change_requests set otp_hash=null, otp_expires_at=%s, otp_used=false,
               evidence = evidence || %s::jsonb where id=%s returning id""",

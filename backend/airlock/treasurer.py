@@ -61,7 +61,8 @@ def compact(verdict: dict) -> dict:
     if "invoice_number" in facts and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,31}", str(facts["invoice_number"])):
         facts["invoice_number"] = "(unparseable)"
     return {"decision": verdict["decision"], "reason": verdict["reason"],
-            "flags": [re.sub(r"[^A-Z0-9_:.~-]", "", f.upper())[:60] for f in verdict["flags"]],
+            # Model-reviewer findings are for humans; the tool-holding agent acts on the deterministic verdict only.
+            "flags": [re.sub(r"[^A-Z0-9_:.~-]", "", f.upper())[:60] for f in verdict["flags"] if not f.startswith("REVIEW:")],
             "next_action": verdict["next_action"],
             "facts": facts,
             **({"authorization_id": verdict["authorization_id"]} if verdict.get("authorization_id") else {})}

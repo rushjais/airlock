@@ -11,8 +11,8 @@ from . import db, flags as F
 import json
 
 HIDDEN = "⟦hidden character⟧"
+ATTACHMENT_ONLY = [("agent", F.AGENT_DIRECTED, "aimed at an automated agent")]  # same scope as the policy check
 SPAN_RULES = [  # (kind, regex, note)
-    ("agent", F.AGENT_DIRECTED, "aimed at an automated agent"),
     ("bank", F.BANK_CHANGE, "bank-change story"),
     ("urgency", F.URGENCY, "pressure to skip checks"),
     ("data", F.DATA_ASK, "asks for internal documents"),
@@ -27,9 +27,9 @@ SPAN_RULES = [  # (kind, regex, note)
 PHONE_ON_FILE = ""
 
 
-def _spans(text: str, registry_last4: str | None) -> list[dict]:
+def _spans(text: str, registry_last4: str | None, attachment: bool = False) -> list[dict]:
     out = []
-    for kind, rx, note in SPAN_RULES:
+    for kind, rx, note in SPAN_RULES + (ATTACHMENT_ONLY if attachment else []):
         for m in rx.finditer(text):
             out.append({"start": m.start(), "end": m.end(), "kind": kind, "note": note})
     for m in F.ACCOUNT.finditer(text):
@@ -61,7 +61,7 @@ def _excerpt(text: str, last4: str | None) -> str:
     lines = text.split("\n")
     hit = set()
     pos = 0
-    spans = _spans(text, last4)
+    spans = _spans(text, last4, True)
     for i, line in enumerate(lines):
         end = pos + len(line)
         if any(sp["start"] < end and sp["end"] > pos for sp in spans):
@@ -106,8 +106,8 @@ def build(case_id: str) -> dict | None:
     for a in raw["attachments"] or []:
         t = F.INVISIBLE.sub(HIDDEN, (a.get("text") or "")[:4000])
         ex = _excerpt(t, last4)
-        atts.append({"name": a.get("filename"), "text": t, "excerpt": ex, "excerpt_spans": _spans(ex, last4),
-                     "spans": _spans(t, last4)})
+        atts.append({"name": a.get("filename"), "text": t, "excerpt": ex, "excerpt_spans": _spans(ex, last4, True),
+                     "spans": _spans(t, last4, True)})
     sender = {"address": m["from_address"], "domain": m["from_domain"],
               "registered": bool(vendor), "vendor": reg["name"] if reg else None,
               "authenticated": m["sender_authenticated"]}

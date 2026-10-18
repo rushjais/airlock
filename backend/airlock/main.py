@@ -463,6 +463,13 @@ def demo_monthend(request: Request):
     return monthend.start(_process)
 
 
+@app.get("/api/mail")
+def mail_feed():
+    """Every message between every identity: Primitive email and Inkbox phone traffic, newest first."""
+    from . import mailfeed
+    return mailfeed.feed()
+
+
 @app.get("/api/monthend")
 def monthend_status():
     from . import monthend
