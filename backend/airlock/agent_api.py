@@ -47,6 +47,10 @@ def _verdict(d: dict | None) -> dict:
             "destination", "change_request_id", "authorization_id")
     out = {"decision": d["decision"], "reason": d["reason"], "flags": d["flags"], "next_action": d["next_action"],
            "facts": {k: facts[k] for k in keep if facts.get(k) is not None}}
+    case = db.one("select id from cases where source_message_id=%s", d.get("message_id")) if d.get("message_id") else None
+    if case:
+        out["case_id"] = case["id"]
+    out["status"] = _status(d, facts)
     # Reflect what actually happened to the payment since the decision was made.
     if facts.get("authorization_id"):
         a = db.one("select status, stripe_transfer_id, created_at from payment_authorizations where id=%s",
@@ -66,8 +70,26 @@ def _verdict(d: dict | None) -> dict:
     elif base == "execute_payment":
         out["agent_guidance"] = "Call execute_payment with facts.authorization_id."
     elif base == "request_vendor_verification":
-        out["agent_guidance"] = "Call request_vendor_verification with facts.change_request_id, then poll get_decision."
+        out["agent_guidance"] = ("Call request_vendor_verification with facts.change_request_id, then poll "
+                                 "get_case_status(case_id) until status is payable, then call execute_payment.")
     return out
+
+
+def _status(d: dict, facts: dict) -> str:
+    """One machine-readable word for where the case stands, so an agent knows whether to act, wait, or stop."""
+    if facts.get("authorization_id"):
+        a = db.one("select status from payment_authorizations where id=%s", facts["authorization_id"])
+        if a and a["status"] == "succeeded":
+            return "paid"
+        if a and a["status"] in ("authorized", "scheduled"):
+            return "payable"
+    if d["decision"] == "hold" and facts.get("change_request_id"):
+        cr = db.one("select status, evidence from change_requests where id=%s", facts["change_request_id"])
+        if cr and cr["status"] == "pending_verification":
+            return "awaiting_vendor" if (cr["evidence"] or {}).get("contact_claimed_at") else "verification_required"
+        if cr and cr["status"] in ("verified", "unresolved"):
+            return "needs_human"
+    return {"deny": "blocked", "hold": "held", "pay": "payable"}.get(d["decision"], "needs_human")
 
 
 def _case_for(message_id: str, verdict: dict | None = None) -> str:
@@ -186,6 +208,19 @@ def decision(message_id: str):
     return _verdict(_latest(_uuid_or_404(message_id, "message")))
 
 
+@router.get("/cases/{case_id}/status", dependencies=[Depends(_auth)])
+def case_status(case_id: str):
+    """Where a case stands now (poll this after a hold). Same verdict shape, plus status: verification_required |
+    awaiting_vendor | payable | paid | held | blocked | needs_human. Retrying is safe: one obligation, one payment."""
+    c = db.one("select source_message_id from cases where id=%s", case_id)
+    if not c:
+        raise HTTPException(404, "unknown case_id")
+    out = _verdict(_latest(str(c["source_message_id"])))
+    out["case_id"] = case_id
+    out["poll_after_seconds"] = 10 if out["status"] == "awaiting_vendor" else None
+    return out
+
+
 @router.post("/execute", dependencies=[Depends(_auth)])
 def execute(ref: AuthRef):
     """Execute an authorization Airlock already created. Takes nothing but the authorization id."""
@@ -231,7 +266,10 @@ def verify(ref: ChangeRef):
                     sent, send_email=False)
         threading.Thread(target=_await_vendor, args=(ref.change_request_id,), daemon=True).start()
     return {"decision": "hold", "reason": "awaiting_vendor_confirmation" if sent.get("ok") else sent.get("reason"),
-            "flags": [], "next_action": "poll get_decision until the vendor answers", "facts": sent}
+            "flags": [], "next_action": "poll get_case_status until the vendor answers", "facts": sent,
+            "status": "awaiting_vendor" if sent.get("ok") else "held",
+            "agent_guidance": "Wait for the vendor's answer: poll get_case_status every ~10s. When status is payable, "
+                              "call execute_payment with facts.authorization_id. Never pay any account from the email."}
 
 
 def _await_vendor(change_request_id: str) -> None:
@@ -245,6 +283,14 @@ def _await_vendor(change_request_id: str) -> None:
                     "They did NOT change banks, so the email's account change is rejected.", send_email=False)
         v = policy.resolve_change_rejected(change_request_id, {"vendor_reply": reply["reply"], "reply": reply["reply"]})
         agents.post(case_id, "auditor", "verdict", pipeline._auditor_text(v), v)
+        # The outside agent finishes the job itself (execute_payment with the new authorization). Warn the vendor.
+        try:
+            w = V.send_compromise_warning(change_request_id, paid_on_file=False)
+            if w["text"] or w["email"]:
+                agents.post(case_id, "verifier", "action", "Warned the vendor (phone on file) that the mailbox that sent "
+                            "this request may be compromised.", w, send_email=False)
+        except Exception as e:
+            pipeline.log.warning("compromise warning failed: %s", e)
     elif reply and reply["answer"] == "yes":  # evidence only; an admin must approve on the signed page
         db.one("update change_requests set status='verified', otp_used=true where id=%s returning id", change_request_id)
         cr = db.one("select source_message_id from change_requests where id=%s", change_request_id)

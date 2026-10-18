@@ -48,6 +48,9 @@ const verdict = z.object({
   next_action: z.string().nullable().describe("Exactly what to do next, e.g. execute_payment or request_vendor_verification"),
   facts: z.record(z.string(), z.any()).optional().describe("Ids and amounts Airlock used; authorization_id appears only when payment is authorized"),
   agent_guidance: z.string().optional().describe("Plain-English instruction for you; human-only steps say there's nothing for you to do"),
+  status: z.string().optional().describe("verification_required | awaiting_vendor | payable | paid | held | blocked | needs_human"),
+  case_id: z.string().optional().describe("Stable id for this case; poll get_case_status with it. Retrying is safe: one obligation pays at most once"),
+  poll_after_seconds: z.number().nullable().optional().describe("When status is awaiting_vendor, check again after this many seconds"),
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,8 +58,8 @@ function reply(data: any, summary: string) {
   return { content: [{ type: "text" as const, text: `${summary}\n${JSON.stringify(data)}` }], structuredContent: data };
 }
 
-const summarize = (v: { decision?: string | null; reason?: string | null; next_action?: string | null }) =>
-  `decision=${v.decision} reason=${v.reason} next_action=${v.next_action}`;
+const summarize = (v: { decision?: string | null; reason?: string | null; next_action?: string | null; status?: string }) =>
+  `status=${v.status ?? "?"} decision=${v.decision} reason=${v.reason} next_action=${v.next_action}`;
 
 server.tool(
   {
@@ -151,6 +154,24 @@ server.tool(
   },
   async ({ message_id }) => {
     const data = await call("GET", `/agent/decision/${message_id}`);
+    return reply(data, summarize(data));
+  }
+);
+
+server.tool(
+  {
+    name: "get_case_status",
+    title: "Get case status",
+    description:
+      "Where a payment case stands now. After a hold (e.g. a requested bank change), poll this: awaiting_vendor means " +
+      "Airlock is checking with the vendor's phone on file; payable means call execute_payment with " +
+      "facts.authorization_id; paid means done. Safe to call repeatedly; a case can never pay twice.",
+    inputSchema: z.object({ case_id: z.string().describe("case_id from any earlier Airlock answer") }),
+    outputSchema: verdict,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
+  async ({ case_id }) => {
+    const data = await call("GET", `/agent/cases/${encodeURIComponent(case_id)}/status`);
     return reply(data, summarize(data));
   }
 );
