@@ -27,7 +27,7 @@ and do business with other companies' agents, while <b>nothing an email says can
 ## Why this exists
 
 An employee at my dad's company got an email that looked exactly like it came from a real customer's billing team
-(Walmart): *"we've changed banks, please pay our new account."* It was fake. The money was gone.
+(Walmart): *"we've changed banks, please pay our new account."* It was fake. **$150,000** was gone.
 
 That's **business email compromise**, one of the costliest crimes the FBI tracks
 (**$2.9B in reported losses in 2023**, IC3). Payment fraud has always followed the channel money moves through:
