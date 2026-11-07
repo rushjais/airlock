@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+scratch/
+results/
+backend/.vendor_state/
+**/node_modules
+**/.venv

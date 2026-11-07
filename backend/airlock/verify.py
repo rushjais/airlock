@@ -14,13 +14,15 @@ import time
 from datetime import datetime, timedelta, timezone
 
 
+from inkbox import Inkbox
+
 from . import config, db
 
 log = logging.getLogger("airlock.verify")
 OTP_TTL = timedelta(minutes=10)
 
 
-def _identity(ib, voice: bool = False):
+def _identity(ib: Inkbox, voice: bool = False):
     """Vendor checks by text come from their own identity (INKBOX_VERIFY_HANDLE) so they never share a thread with
     admin briefs. Voice calls need a phone number, which only the main identity has."""
     if voice:
@@ -72,7 +74,6 @@ def send_compromise_warning(change_request_id: str, paid_on_file: bool) -> dict:
         return {"text": True, "email": False, "email_skipped": None}
     sent = {"text": False, "email": False}
     try:
-        from inkbox import Inkbox
         with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
             ident = _identity(ib)
             msg = f"VENDOR CHECK for {vendor['name']} (follow-up)\n" + body
@@ -143,7 +144,6 @@ def send_code(change_request_id: str) -> dict:
     if (config.get("AIRLOCK_VERIFY_CHANNEL") or "text") == "call":
         return _place_call(cr, vendor, new, phone)
     channel = "sms"
-    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
         try:
@@ -203,7 +203,6 @@ def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
         "3. Only after you have heard their answer (or asked twice with no answer), repeat back what you heard, say: "
         "\"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
         "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
-    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         call = _identity(ib, voice=True).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
     log_text("voice", phone, "vendor_verification_call", "Voice AI call to the phone on file asking whether "
@@ -223,7 +222,6 @@ YES_WORDS = re.compile(r"\b(yes|yeah|yep|correct|we did|that'?s right|confirm(ed
 
 def _check_call(cr: dict) -> dict | None:
     call_id = cr["evidence"]["call_id"]
-    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib, voice=True)
         call = next((c for c in ident.list_calls(limit=20) if str(c.id) == call_id), None)
@@ -242,7 +240,6 @@ def _check_call(cr: dict) -> dict | None:
 
 def _replies_since(phone: str, since: datetime) -> list[str]:
     out = []
-    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
         try:  # an iMessage-only identity (no phone number) has no SMS inbox

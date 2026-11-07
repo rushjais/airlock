@@ -1,8 +1,12 @@
 import os
 
 os.environ["AIRLOCK_DB_SCHEMA"] = "airlock_test"  # set before airlock.config is imported
-os.environ["AIRLOCK_PUBLIC_MODE"] = "0"
 os.environ["AIRLOCK_INTAKE_PAUSED"] = "0"
+# Test-only values (not secrets) so the suite runs anywhere, including CI with no .env.
+for _k, _v in {"ADMIN_SESSION_SECRET": "test-only-session-secret", "ADMIN_PASSCODE": "test-only-passcode",
+               "AIRLOCK_AGENT_SIGNING_SECRET": "test-only-signing-secret",
+               "INKBOX_API_KEY": "test-only-inkbox-key", "PRIMITIVE_API_KEY": "test-only-primitive-key"}.items():
+    os.environ.setdefault(_k, _v)
 
 """Tests run against the real Supabase database (reseeded per test). Stripe is stubbed unless a test says otherwise."""
 import threading
