@@ -8,7 +8,7 @@ type Decision = { decision: string; reason: string; rule: { step: string; text: 
 type View = {
   case_id: string; status: string;
   email: { from: string; reply_to: string | null; subject: string; body: string; attachments: string[] };
-  asked: { amount_cents: number | null; accounts: string[] };
+  asked: { amount_cents: number | null; amounts: number[]; accounts: string[] };
   reader: { model: string | null; recorded_at: string | null; claims: Claim[] };
   first_decision: Decision | null; decision: Decision;
   records: { label: string; claim: string | number | null; record: string | number | null; match: boolean; money?: boolean }[];
@@ -81,6 +81,10 @@ export default function TryIt() {
     try {
       const out = await call<{ case_id: string; view: View }>(`/api/try/send/${id}`, { method: "POST" });
       setView(out.view); setSelected(out.case_id); refresh();
+      if (window.innerWidth < 1024) {  // stacked layout: bring the verdict into view
+        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        requestAnimationFrame(() => document.getElementById("verdict")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" }));
+      }
     } catch (e) { setError((e as Error).message); }
     setBusy(null);
   }
@@ -182,7 +186,7 @@ function Verdict({ v, onChange }: { v: View; onChange: (v: View) => void }) {
   const verdict = VERDICT[now.decision] ?? VERDICT.hold;
   const changed = first && (first.decision !== now.decision || first.reason !== now.reason);
   return (
-    <article aria-label="What happened" className="min-w-0">
+    <article id="verdict" aria-label="What happened" className="min-w-0 scroll-mt-4">
       <div className="grid gap-0 overflow-hidden rounded-lg border border-line lg:grid-cols-2">
         <Outside v={v} />
         <div className="border-t-4 border-double border-line bg-panel p-5 lg:border-t-0 lg:border-l-4">
@@ -219,7 +223,9 @@ function Outside({ v }: { v: View }) {
   const asked = v.asked.accounts.length ? `account ending ${v.asked.accounts.join(", ")}` : "the account on file";
   const [cf, setCf] = useState<Counterfactual | null>(null);
   const [cfBusy, setCfBusy] = useState(false);
-  useEffect(() => setCf(null), [v.case_id]);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setCf(null); setShowAll(false); }, [v.case_id]);
+  const noticed = v.reader.claims.filter((c) => c.field === "instructions_to_reader").length;
   const canFool = v.first_decision && v.first_decision.decision !== "pay" && /\$[\d,]+\.\d{2}/.test(v.email.body);
   return (
     <div className="bg-bg p-5">
@@ -228,20 +234,28 @@ function Outside({ v }: { v: View }) {
         <p className="text-[13px] text-muted">From <span className="text-text">{v.email.from}</span>
           {v.email.reply_to && <> , replies to <span className="text-bad">{v.email.reply_to}</span></>}</p>
         <p className="mt-1 text-[15px] font-semibold">{v.email.subject}</p>
-        <div className="font-letter mt-3 max-h-64 overflow-auto text-[16px] leading-[1.55] whitespace-pre-wrap">{v.email.body}</div>
+        <div className="font-letter mt-3 max-h-72 overflow-auto text-[16px] leading-[1.55] whitespace-pre-wrap">{reflow(v.email.body)}</div>
         {v.email.attachments.length > 0 && (
           <p className="mt-2 text-[13px] text-muted">Attached: {v.email.attachments.join(", ")}</p>)}
       </div>
-      <p className="mt-4 text-[15px]">
-        It asks the agent to pay <span className="num font-semibold">{usd(v.asked.amount_cents)}</span> to {asked}.
+      <p className="mt-4 text-[15px] leading-relaxed">
+        The agent is asked to pay <span className="num font-semibold">{usd(v.asked.amount_cents)}</span> to {asked}.
+        {(v.asked.amounts ?? []).length > 1 && <span className="text-muted"> (The email names {v.asked.amounts.map(usd).join(" and ")}.)</span>}
       </p>
 
-      <h3 className="mt-5 text-[13px] text-muted">
-        What the model read{v.reader.model ? ` (${v.reader.model}, real output recorded ${v.reader.recorded_at?.slice(0, 10)})` : ""}
-      </h3>
-      <dl className="mt-1 divide-y divide-line rounded-md border border-line text-[13px]">
-        {claims.map((c, i) => (
-          <div key={i} className="grid grid-cols-[120px_1fr] gap-2 px-3 py-1.5">
+      <h3 className="mt-5 text-[15px] font-semibold">What the model read</h3>
+      <p className="mt-1 border-l-2 border-held pl-3 text-[14px] leading-relaxed">
+        The model's read can be wrong; the payment decision never depends on it.
+      </p>
+      {noticed > 0 && (
+        <p className="mt-2 text-[14px] leading-relaxed text-muted">This time the model caught it and reported
+          {noticed === 1 ? " one instruction" : ` ${noticed} instructions`} aimed at the agent. Policy doesn't rely on that either.</p>)}
+      <p className="mt-2 text-[12px] text-muted">
+        {v.reader.model ? `Real ${v.reader.model} output for this exact email, recorded ${v.reader.recorded_at?.slice(0, 10)} and replayed here (no model calls in the demo). ` : ""}
+        Every value keeps its origin label.</p>
+      <dl className="mt-2 divide-y divide-line rounded-md border border-line text-[13px]">
+        {(showAll ? claims : claims.slice(0, 6)).map((c, i) => (
+          <div key={i} className="grid grid-cols-[104px_1fr] gap-2 px-3 py-1.5">
             <dt className="text-muted">{FIELD[c.field] ?? c.field}</dt>
             <dd className="min-w-0 break-words">
               {c.field === "amount_cents" ? usd(Number(c.value)) : c.value}
@@ -249,10 +263,10 @@ function Outside({ v }: { v: View }) {
             </dd>
           </div>
         ))}
+        {claims.length > 6 && (
+          <button onClick={() => setShowAll(!showAll)} className="block w-full px-3 py-1.5 text-left text-[13px] text-muted hover:text-text">
+            {showAll ? "Show fewer" : `Show all ${claims.length} values`}</button>)}
       </dl>
-      <p className="mt-3 border-l-2 border-held pl-3 text-[14px] leading-relaxed">
-        The model's read can be wrong; the payment decision never depends on it.
-      </p>
       {canFool && !cf && (
         <button onClick={async () => { setCfBusy(true); try { setCf(await call(`/api/try/counterfactual/${v.case_id}`, { method: "POST" })); } finally { setCfBusy(false); } }}
           disabled={cfBusy} className="mt-3 rounded-md border border-line px-3 py-1.5 text-[14px] hover:bg-raised disabled:opacity-60">
@@ -274,7 +288,12 @@ function Outside({ v }: { v: View }) {
 }
 
 function labelWord(l: string) {
-  return { EXTERNAL_EMAIL: "from the email", EXTERNAL_ATTACHMENT: "from the attachment", MODEL_READER: "read by the model" }[l] ?? l;
+  return { EXTERNAL_EMAIL: "email", EXTERNAL_ATTACHMENT: "attachment", MODEL_READER: "model" }[l] ?? l;
+}
+
+// Scenario emails are hard-wrapped; join wrapped lines so the letter reflows to the panel width.
+function reflow(body: string) {
+  return body.replace(/([^\n])\n(?!\n)/g, "$1 ");
 }
 
 function Records({ rows }: { rows: View["records"] }) {

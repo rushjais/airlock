@@ -334,6 +334,7 @@ def view(case_id: str) -> dict | None:
     text = (m["subject"] or "") + "\n" + (raw["body_text"] or "")
     asked_accounts = sorted(F.account_last4s(text + "\n" + "\n".join(a.get("text") or "" for a in raw["attachments"] or [])))
     claims = db.all_rows("select field, value, labels from claims where message_id=%s order by field, value", mid)
+    amounts = sorted({int(round(float(x.replace(",", "")) * 100)) for x in re.findall(r"\$([\d,]+\.\d{2})", text)})
     cr = db.one("select * from change_requests where source_message_id=%s order by created_at desc limit 1", mid)
     phone = db.all_rows("""select channel, template, body, created_at from outbound_messages where in_reply_to_message_id=%s
                            and channel in ('simulated','simulated_reply') order by created_at""", mid)
@@ -353,7 +354,9 @@ def view(case_id: str) -> dict | None:
         "case_id": case_id, "status": c["status"],
         "email": {"from": m["from_address"], "reply_to": m["reply_to"], "subject": m["subject"],
                   "body": raw["body_text"], "attachments": [a.get("filename") for a in raw["attachments"] or []]},
-        "asked": {"amount_cents": facts.get("claimed_cents"), "accounts": asked_accounts},
+        # What the email asks for, read deterministically from its text (the largest dollar amount it names).
+        "asked": {"amount_cents": max(amounts) if amounts else facts.get("claimed_cents"), "amounts": amounts,
+                  "accounts": asked_accounts},
         "reader": {"model": rec.get("model"), "recorded_at": rec.get("recorded_at"), "claims": claims},
         "first_decision": {"decision": first["decision"], "reason": first["reason"], "rule": rule_for(first["reason"]),
                            "flags": first["flags"], "explained": F.explain(first["flags"]),

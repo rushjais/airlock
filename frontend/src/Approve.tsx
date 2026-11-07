@@ -14,6 +14,8 @@ const FLAG_TEXT: Record<string, string> = {
   BANK_CHANGE_LANGUAGE: "The email uses bank-change wording, a common invoice-fraud pattern.",
   EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT: "An attachment contained hidden instructions aimed at an automated payer.",
   URGENCY_LANGUAGE: "The email pressures for urgent payment.",
+  INSTRUCTIONS_TO_AGENT_IN_EMAIL: "The email contains instructions aimed at an AI agent (a prompt injection).",
+  COMPANY_LOOKALIKE_DOMAIN: "The sender imitates our own company's domain.",
   REPLY_TO_MISMATCH: "Replies would go to a different domain than the sender's.",
 };
 

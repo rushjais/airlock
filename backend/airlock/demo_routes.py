@@ -15,7 +15,7 @@ from . import config, db, demo
 
 log = logging.getLogger("airlock.demo")
 DIST = config.ROOT / "frontend" / "dist"
-API_ALLOW = re.compile(r"^/api/(try/|approvals/|(cases|summary|money|messages|controls|mail|results)(/|$))")
+API_ALLOW = re.compile(r"^/api/(try/|approvals/|(cases|summary|money|messages|controls|mail|results|monthend)(/|$))")
 _rail_cache: dict = {}
 
 
