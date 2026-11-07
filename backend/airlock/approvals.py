@@ -24,21 +24,27 @@ LINK_TTL = timedelta(hours=2)
 FAST_APPROVAL_S = 10
 
 
+# DEMO_MODE: the passcode is shown on screen (the visitor plays the admin); the link-signing key is random per boot.
+DEMO_PASSCODE = "kiln-admin"
+_DEMO_SECRET = __import__("secrets").token_hex(32)
+
+
 def _sig(cr_id: str, exp: int) -> str:
-    key = config.need("ADMIN_SESSION_SECRET").encode()
+    key = (config.get("ADMIN_SESSION_SECRET") or (_DEMO_SECRET if config.DEMO_MODE else None)
+           or config.need("ADMIN_SESSION_SECRET")).encode()
     return hmac.new(key, f"approve|{cr_id}|{exp}".encode(), hashlib.sha256).hexdigest()
 
 
 def approval_link(cr_id: str) -> str:
     exp = int((datetime.now(timezone.utc) + LINK_TTL).timestamp())
-    base = config.get("APP_BASE_URL", "http://localhost:5173")
+    base = config.get("APP_BASE_URL", "" if config.DEMO_MODE else "http://localhost:5173")  # demo: same origin
     return f"{base}/approve/{cr_id}?exp={exp}&t={_sig(cr_id, exp)}"
 
 
 def passcode_ok(passcode: str | None) -> bool:
     """Step-up admin authentication: the signed link proves the server sent it; the admin passcode proves the person
     approving is the admin (a forwarded or leaked link alone can't approve). Fails closed if no passcode is set."""
-    expected = config.get("ADMIN_PASSCODE") or ""
+    expected = config.get("ADMIN_PASSCODE") or (DEMO_PASSCODE if config.DEMO_MODE else "")
     return bool(expected) and hmac.compare_digest(hashlib.sha256((passcode or "").encode()).hexdigest(),
                                                   hashlib.sha256(expected.encode()).hexdigest())
 

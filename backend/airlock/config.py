@@ -8,7 +8,9 @@ import pathlib
 from dotenv import dotenv_values
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-_ENV = {k: v for k, v in dotenv_values(ROOT / ".env").items() if k != "STRIPE_SECRET_KEY"}
+# AIRLOCK_NO_DOTENV=1 ignores ../.env entirely (run exactly as the container does, with only real env vars).
+_NO_DOTENV = os.environ.get("AIRLOCK_NO_DOTENV") == "1"
+_ENV = {} if _NO_DOTENV else {k: v for k, v in dotenv_values(ROOT / ".env").items() if k != "STRIPE_SECRET_KEY"}
 
 FIXTURES = ROOT / "fixtures"
 SCENARIOS = ROOT / "scenarios"
@@ -33,3 +35,9 @@ DB_SCHEMA = get("AIRLOCK_DB_SCHEMA", "airlock")  # tests use airlock_test so the
 INBOX_DOMAIN = (get("AGENT_INBOX_ADDRESS", "ap@wise-egret.primitive.email") or "").split("@")[-1]
 AGENT_INBOX = get("AGENT_INBOX_ADDRESS", f"ap@{INBOX_DOMAIN}")
 EXECUTOR_URL = get("EXECUTOR_URL", "http://127.0.0.1:8001")
+
+# DEMO_MODE: the hosted, no-sign-up demo. No model calls (the reader replays recorded Claude output), no email or
+# texts leave the server (the vendor's phone is simulated on screen), and payments go to a simulated rail unless a
+# Stripe TEST key is given to the executor. Every visitor gets their own sandbox schema. Needs only DATABASE_URL.
+DEMO_MODE = (get("DEMO_MODE") or "").lower() in ("1", "true", "yes")
+RECORDINGS = ROOT / "demo" / "reads"

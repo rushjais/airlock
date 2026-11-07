@@ -21,7 +21,11 @@ def _usd(c) -> str:
 
 
 def execute_payment(authorization_id: str) -> dict:
-    r = httpx.post(f"{config.EXECUTOR_URL}/execute", json={"authorization_id": authorization_id}, timeout=60)
+    # The sandbox header only says which demo database to look in; amount, destination and vendor still come
+    # from that database's records (invariant 2).
+    sb = db.SANDBOX.get()
+    r = httpx.post(f"{config.EXECUTOR_URL}/execute", json={"authorization_id": authorization_id}, timeout=60,
+                   headers={"X-Airlock-Sandbox": sb} if sb else None)
     return r.json()
 
 
@@ -29,17 +33,14 @@ def _reply(message_id: str, template: str, **values) -> dict:
     msg = db.one("select provider_message_id, from_address, from_domain, sender_authenticated from messages where id=%s",
                  message_id)
     registered = db.one("select 1 from vendors where registered_domain=%s", msg["from_domain"])
-    if not registered:  # invariant 12: outsiders get at most one templated acknowledgment a day, never vendor mail
-        if template != "public_ack" or not msg["sender_authenticated"] or db.one(
-                """select 1 from outbound_messages where to_address=%s and template='public_ack'
-                   and created_at > now() - interval '1 day'""", msg["from_address"]):
-            return {"ok": False, "skipped": "sender is not a registered vendor"}
+    if not registered:  # invariant 12: outbound mail goes only to registered vendors
+        return {"ok": False, "skipped": "sender is not a registered vendor"}
     body = render(template, **values)
     if db.one("""select 1 from outbound_messages where to_address=%s and template=%s and body=%s
                  and created_at > now() - interval '1 hour'""", msg["from_address"], template, body):
         return {"ok": True, "sent_to": msg["from_address"], "template": template, "skipped": "same reply already sent"}
     provider_id = None
-    if not msg["provider_message_id"].startswith("replay:"):
+    if not msg["provider_message_id"].startswith("replay:") and not config.DEMO_MODE:
         try:
             sent = primitive.reply(msg["provider_message_id"], body, idempotency_key=f"airlock-{message_id}-{template}")
             provider_id = sent.get("id")
@@ -77,6 +78,8 @@ AUDITOR_REASONS = {
     "destination_change_requested": "the email asks to pay a different account than the one on file. Holding: "
                                     "a bank change is only accepted after the vendor confirms on the phone already on file",
     "sender_not_registered": "the sender is not a registered vendor (it imitates {imitates})",
+    "sender_imitates_company": "the sender imitates our own company's domain. Requests from outside the vendor "
+                               "registry can never be paid, whoever they claim to be",
     "outbound_recipient_not_registered": "an unregistered sender is asking for internal documents",
     "amount_mismatch": "it asks for {claimed} but the approved amount is {obligation}",
     "obligation_already_settled": "{po} was already paid",
@@ -130,7 +133,8 @@ def _handlers(case_id: str, message_id: str, verdict: dict) -> dict:
                         f"Sent a verification request to the phone {common['vendor']} has on file (ending "
                         f"{sent['phone_on_file_last4']}) by {sent['channel']}. Not the number in the email. "
                         f"Waiting for their answer; the invoice stays on hold.", sent)
-            threading.Thread(target=_await_vendor, args=(case_id, message_id, change_request_id), daemon=True).start()
+            if not config.DEMO_MODE:  # demo: the visitor answers on the simulated phone (airlock.demo.phone_reply)
+                threading.Thread(target=_await_vendor, args=(case_id, message_id, change_request_id), daemon=True).start()
         return sent
 
     def do_reply(template: str) -> dict:
@@ -173,7 +177,11 @@ def _treasurer_turn(case_id: str, message_id: str, verdict: dict) -> dict:
 
 
 def _await_vendor(case_id: str, message_id: str, change_request_id: str) -> None:
-    reply = verify.wait_for_reply(change_request_id)
+    handle_vendor_reply(case_id, message_id, change_request_id, verify.wait_for_reply(change_request_id))
+
+
+def handle_vendor_reply(case_id: str, message_id: str, change_request_id: str, reply: dict | None) -> None:
+    """What the agents do with the answer from the phone on file (evidence, never authority)."""
     if reply is None:
         agents.post(case_id, "verifier", "result", "No answer from the phone on file within 10 minutes. "
                     "Still holding; escalating to admin.")
@@ -229,6 +237,9 @@ def possessive(name: str) -> str:
 
 def _text_admin(text: str, subject: str | None = None) -> bool:
     """Brief the admin by text and, if configured, by email. Never asks for a reply: replies authorize nothing."""
+    if config.DEMO_MODE:  # nothing leaves the server in the demo; the brief is shown on screen instead
+        verify.log_text("simulated", "Kiln admin", "admin_brief", text)
+        return True
     email = config.get("DEMO_ADMIN_EMAIL")
     if email:
         try:
@@ -331,22 +342,16 @@ def process(message_id: str) -> dict:
 
 
 def _process_locked(message_id: str) -> dict:
-    from . import public
-    why = public.gate(message_id)
-    if why:  # kill switch or per-sender rate limit: stored, logged, not processed
-        public.record(message_id, None, None, rule=why)
-        log.info("not processing %s: %s", message_id, why)
-        return {"decision": "skipped", "reason": why}
+    if (config.get("AIRLOCK_INTAKE_PAUSED") or "0") == "1":  # kill switch: stored, not processed
+        return {"decision": "skipped", "reason": "intake_paused"}
     try:
-        if public.model_budget_ok(message_id):
-            reader.read(message_id)
-            try:  # advisory only; a failure here never blocks or changes a decision
+        reader.read(message_id)
+        if not config.DEMO_MODE:  # the reviewer is advisory only; the demo makes no model calls
+            try:  # a failure here never blocks or changes a decision
                 from . import reviewer
                 reviewer.review(message_id)
             except Exception as e:
                 log.warning("reviewer skipped for %s: %s", message_id, e)
-        else:
-            public.regex_read(message_id)
     except Exception as e:  # fail safe: without claims nothing can be authorized; show it as held
         m = db.one("select from_address, subject from messages where id=%s", message_id)
         case_id = agents.open_case(message_id, {"from_domain": m["from_address"].split("@")[-1]}, None)
@@ -362,16 +367,6 @@ def _process_locked(message_id: str) -> dict:
     case_id = agents.open_case(message_id, facts, vendor["name"] if vendor else None)
     agents.post(case_id, "intake", "open", _intake_text(message_id, facts))
     agents.post(case_id, "auditor", "verdict", _auditor_text(verdict), verdict)
-    if public.enabled() and not facts.get("vendor_id"):
-        # Public mode, unregistered sender: nothing for the Treasurer to do (and no model spend). One templated
-        # acknowledgment at most, pointing at the public board.
-        db.one("update cases set status=%s where id=%s returning id",
-               "denied" if verdict["decision"] == "deny" else "held", case_id)
-        board = config.get("PUBLIC_BASE_URL")
-        if board:
-            _reply(message_id, "public_ack", board=f"{board.rstrip('/')}/attempts")
-    else:
-        _treasurer_turn(case_id, message_id, verdict)
-    public.record(message_id, verdict, case_id)
+    _treasurer_turn(case_id, message_id, verdict)
     log.info("case %s: %s (%s)", case_id, verdict["decision"], verdict["reason"])
     return {**verdict, "case_id": case_id}

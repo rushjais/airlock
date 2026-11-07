@@ -5,6 +5,7 @@ A YES needs the 6-digit code (so nobody else can confirm a change); a NO needs n
 The vendor's reply is evidence. Only an admin's authenticated click can change the registry.
 """
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -12,7 +13,6 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
-from inkbox import Inkbox
 
 from . import config, db
 
@@ -20,7 +20,7 @@ log = logging.getLogger("airlock.verify")
 OTP_TTL = timedelta(minutes=10)
 
 
-def _identity(ib: Inkbox, voice: bool = False):
+def _identity(ib, voice: bool = False):
     """Vendor checks by text come from their own identity (INKBOX_VERIFY_HANDLE) so they never share a thread with
     admin briefs. Voice calls need a phone number, which only the main identity has."""
     if voice:
@@ -66,8 +66,13 @@ def send_compromise_warning(change_request_id: str, paid_on_file: bool) -> dict:
     body = (f"Thanks for confirming. Someone sent that request from {ctx['sender']}, so that mailbox may be compromised. "
             f"We did NOT pay the new account (ending {cr['new_last4'] or '?'}). {outcome} We recommend resetting that "
             f"mailbox's password and warning your other customers. Reference {ctx['ref']}.")
+    if config.DEMO_MODE:  # shown on the simulated vendor phone; nothing is sent
+        log_text("simulated", vendor["registered_phone"], "compromise_warning",
+                 f"VENDOR CHECK for {vendor['name']} (follow-up)\n" + body, cr["source_message_id"])
+        return {"text": True, "email": False, "email_skipped": None}
     sent = {"text": False, "email": False}
     try:
+        from inkbox import Inkbox
         with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
             ident = _identity(ib)
             msg = f"VENDOR CHECK for {vendor['name']} (follow-up)\n" + body
@@ -107,9 +112,6 @@ def send_code(change_request_id: str) -> dict:
     vendor = db.one("select * from vendors where id=%s", cr["vendor_id"])
     if cr["status"] != "pending_verification":
         return {"ok": False, "reason": f"change_request_{cr['status']}"}
-    from . import public
-    if not public.verification_budget_ok():  # public mode: at most 3 phone checks an hour
-        return {"ok": False, "reason": "verification_rate_limited"}
     # One active check per vendor: a bare "NO" from the phone on file must refer to exactly one request.
     other = db.one("""select id from change_requests where vendor_id=%s and id <> %s and status='pending_verification'
                       and evidence ? 'contact_claimed_at'
@@ -136,9 +138,12 @@ def send_code(change_request_id: str) -> dict:
             f"{cr['old_destination_last4']}. We never change bank details based on email alone.\n"
             f"Did {vendor['name']} change its bank account? Reply YES {code} if you did, or NO if you didn't.")
     phone = vendor["registered_phone"]  # the phone on file, never a number from the email
+    if config.DEMO_MODE:
+        return _simulated_text(cr, phone, text, code)
     if (config.get("AIRLOCK_VERIFY_CHANNEL") or "text") == "call":
         return _place_call(cr, vendor, new, phone)
     channel = "sms"
+    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
         try:
@@ -155,6 +160,27 @@ def send_code(change_request_id: str) -> dict:
            json.dumps({"verification_sent_at": sent_at.isoformat(), "channel": channel, "phone_on_file": phone}),
            change_request_id)
     return {"ok": True, "channel": channel, "phone_on_file_last4": phone[-4:], "sent_at": sent_at.isoformat()}
+
+
+def _simulated_text(cr: dict, phone: str, text: str, code: str) -> dict:
+    """DEMO_MODE: no text is sent. The message (code included) is shown on the on-screen vendor phone, which the
+    visitor plays. Only the code's hash is stored for checking, exactly as in the real flow."""
+    log_text("simulated", phone, "vendor_verification", text, cr["source_message_id"])
+    sent_at = datetime.now(timezone.utc)
+    db.one("""update change_requests set otp_hash=%s, otp_expires_at=%s, otp_used=false,
+              evidence = evidence || %s::jsonb where id=%s returning id""",
+           _hash(code), sent_at + OTP_TTL,
+           json.dumps({"verification_sent_at": sent_at.isoformat(), "channel": "simulated phone (demo)",
+                       "phone_on_file": phone}), cr["id"])
+    return {"ok": True, "channel": "simulated phone (demo)", "phone_on_file_last4": phone[-4:],
+            "sent_at": sent_at.isoformat()}
+
+
+def check_code(change_request_id: str, code: str) -> bool:
+    """A YES only counts with the fresh, unused one-time code sent to the phone on file."""
+    cr = db.one("select otp_hash, otp_expires_at, otp_used from change_requests where id=%s", change_request_id)
+    return bool(cr and cr["otp_hash"] and cr["otp_expires_at"] and cr["otp_expires_at"] > datetime.now(timezone.utc)
+                and not cr["otp_used"] and hmac.compare_digest(_hash(code.strip()), cr["otp_hash"]))
 
 
 def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
@@ -177,6 +203,7 @@ def _place_call(cr: dict, vendor: dict, new: str, phone: str) -> dict:
         "3. Only after you have heard their answer (or asked twice with no answer), repeat back what you heard, say: "
         "\"Thank you. Kiln never changes payment details based on an email alone.\" and end the call.\n"
         "Do not ask for, read out, or accept any bank details. Do not promise or discuss payment timing. Keep it short.")
+    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         call = _identity(ib, voice=True).place_call(to_number=phone, mode="hosted_agent", reason=reason, on_voicemail="hang_up")
     log_text("voice", phone, "vendor_verification_call", "Voice AI call to the phone on file asking whether "
@@ -196,6 +223,7 @@ YES_WORDS = re.compile(r"\b(yes|yeah|yep|correct|we did|that'?s right|confirm(ed
 
 def _check_call(cr: dict) -> dict | None:
     call_id = cr["evidence"]["call_id"]
+    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib, voice=True)
         call = next((c for c in ident.list_calls(limit=20) if str(c.id) == call_id), None)
@@ -214,6 +242,7 @@ def _check_call(cr: dict) -> dict | None:
 
 def _replies_since(phone: str, since: datetime) -> list[str]:
     out = []
+    from inkbox import Inkbox
     with Inkbox(api_key=config.need("INKBOX_API_KEY")) as ib:
         ident = _identity(ib)
         try:  # an iMessage-only identity (no phone number) has no SMS inbox

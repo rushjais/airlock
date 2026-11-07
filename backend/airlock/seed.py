@@ -17,19 +17,21 @@ from . import config
 SHORT = {"ven_acme": "acme", "ven_brightline": "brightline", "ven_corvid": "corvid"}
 
 
-def main(reset: bool, demo: bool = True) -> None:
-    """demo=False ignores .env overrides (tests and the scenario oracle use pure fixtures)."""
+def main(reset: bool, demo: bool = True, schema: str | None = None, quiet: bool = False) -> None:
+    """demo=False ignores .env overrides (tests, the scenario oracle and DEMO_MODE sandboxes use pure fixtures).
+    schema: seed this schema instead of AIRLOCK_DB_SCHEMA (DEMO_MODE builds one per visitor)."""
+    schema = schema or config.DB_SCHEMA
     company = json.loads((config.FIXTURES / "company.json").read_text())
     history = json.loads((config.FIXTURES / "invoice_history.json").read_text())["history"]
-    schema = (pathlib.Path(__file__).parent / "schema.sql").read_text()
+    ddl = (pathlib.Path(__file__).parent / "schema.sql").read_text()
 
     with psycopg.connect(config.need("DATABASE_URL"), autocommit=False) as conn:
         if reset:
-            conn.execute(schema.replace("{schema}", config.DB_SCHEMA))
-        conn.execute(f"set search_path to {config.DB_SCHEMA}")
+            conn.execute(ddl.replace("{schema}", schema))
+        conn.execute(f"set search_path to {schema}")
         c = company["company"]
-        conn.execute("insert into company (name, auto_pay_limit_cents) values (%s, %s)",
-                     (c["name"], c["auto_pay_limit_cents"]))
+        conn.execute("insert into company (name, domain, auto_pay_limit_cents) values (%s, %s, %s)",
+                     (c["name"], c.get("domain"), c["auto_pay_limit_cents"]))
         for v in company["vendors"]:
             short = SHORT[v["id"]]
             email = (demo and config.get(f"DEMO_VENDOR_EMAIL_{short.upper()}")) or v["registered_email"]
@@ -61,6 +63,8 @@ def main(reset: bool, demo: bool = True) -> None:
                        remit_last4, line_items) values (%s,%s,%s,%s,%s,%s)""",
                 (h["vendor_id"], h["invoice"], h["date"], h["amount_cents"], h["remit_last4"], h["line_items"]))
         conn.commit()
+        if quiet:
+            return
         counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0]
                   for t in ("vendors", "contracts", "obligations", "invoice_history", "standing_limits")}
         print("seeded:", counts)

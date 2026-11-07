@@ -64,7 +64,7 @@ def post(case_id: str, author: str, kind: str, body: str, data: dict | None = No
     CC'ing the other agents (and the admin if configured)."""
     case = db.one("select * from cases where id=%s", case_id)
     provider_id = None
-    if send_email and author in AGENTS:
+    if send_email and author in AGENTS and not config.DEMO_MODE:  # demo: the thread lives only in the DB
         nonce = uuid.uuid4().hex[:16]
         text = (f"{body}\n\n--\n{author.capitalize()} · Airlock agent team · [{case_id}]\n"
                 f"airlock-sig: {nonce}:{_sign(case_id, author, nonce)}")

@@ -7,21 +7,32 @@ One authorization -> at most one transfer: atomic status claim + Stripe idempote
 A timeout leaves the authorization `unknown`, which blocks new authorizations until reconciled with the SAME key
 (invariant 6).
 """
+import hashlib
 import os
 import pathlib
+import types
 
 import stripe
 from dotenv import dotenv_values
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from . import db
+from . import config, db
 
-_KEY = dotenv_values(pathlib.Path(__file__).resolve().parents[2] / ".env").get("STRIPE_SECRET_KEY") or ""
-if not _KEY.startswith("sk_test_"):
+_KEY = os.environ.get("STRIPE_SECRET_KEY") or ("" if os.environ.get("AIRLOCK_NO_DOTENV") == "1" else
+        dotenv_values(pathlib.Path(__file__).resolve().parents[2] / ".env").get("STRIPE_SECRET_KEY")) or ""
+# DEMO_MODE without a key: a simulated rail (transfer ids start with tr_sim_ and the UI says "simulated").
+SIMULATED = config.DEMO_MODE and not _KEY
+if not SIMULATED and not _KEY.startswith("sk_test_"):
     raise RuntimeError("executor refuses to start without a Stripe TEST key")
-stripe.api_key = _KEY
+stripe.api_key = _KEY or None
 stripe.max_network_retries = 0  # retries are ours, always with the same idempotency key
+
+
+def _create_transfer(**kw):
+    if SIMULATED:  # same inputs as the Stripe call, deterministic per idempotency key, no network
+        return types.SimpleNamespace(id="tr_sim_" + hashlib.sha256(kw["idempotency_key"].encode()).hexdigest()[:14])
+    return stripe.Transfer.create(**kw)
 
 app = FastAPI(title="Airlock executor")
 # Test-only: pause after Stripe accepts a transfer, before we record it, so the chaos test can kill us there.
@@ -33,11 +44,21 @@ def _recover_interrupted() -> None:
     """Anything still `executing` belongs to a process that died mid-transfer. We can't know whether Stripe
     moved the money, so it becomes `unknown` (blocks new authorizations, invariant 6) until reconciled with the
     SAME idempotency key."""
-    rows = db.all_rows("""update payment_authorizations set status='unknown',
-                          last_error='executor restarted while this payment was executing'
-                          where status='executing' returning id""")
-    for r in rows:
-        print(f"recovered interrupted authorization {r['id']} -> unknown")
+    schemas = [None]
+    if config.DEMO_MODE:  # every visitor sandbox (the default schema isn't used in demo mode)
+        with db.pool().connection() as conn:
+            schemas = [r["nspname"] for r in conn.execute(
+                "select nspname from pg_namespace where nspname ~ '^airlock_demo_[a-f0-9]{12}$'").fetchall()]
+    for sb in schemas:
+        token = db.SANDBOX.set(sb)
+        try:
+            rows = db.all_rows("""update payment_authorizations set status='unknown',
+                                  last_error='executor restarted while this payment was executing'
+                                  where status='executing' returning id""")
+        finally:
+            db.SANDBOX.reset(token)
+        for r in rows:
+            print(f"recovered interrupted authorization {r['id']} -> unknown ({sb or config.DB_SCHEMA})")
 
 
 class ExecuteRequest(BaseModel):
@@ -88,7 +109,7 @@ def execute(auth_id: str) -> dict:
 
 def _transfer(a: dict) -> dict:
     try:
-        tr = stripe.Transfer.create(
+        tr = _create_transfer(
             amount=a["amount_cents"], currency="usd", destination=a["stripe_account_id"],
             transfer_group=a["obligation_id"],
             description=f"Airlock payment for {a['obligation_id']}",
@@ -127,8 +148,19 @@ def reconcile(auth_id: str) -> dict:
     return _transfer(a)
 
 
+def _sandbox(request: Request) -> None:
+    """Demo only: which visitor sandbox to read the authorization from. It selects a database, never an amount,
+    destination or approval; everything else is still loaded from that database's records."""
+    sb = request.headers.get("x-airlock-sandbox")
+    if sb:
+        if not (config.DEMO_MODE and db.SANDBOX_RE.match(sb)):
+            raise HTTPException(400, "bad sandbox")
+        db.SANDBOX.set(sb)
+
+
 @app.post("/execute")
-def execute_route(req: ExecuteRequest):
+def execute_route(req: ExecuteRequest, request: Request):
+    _sandbox(request)
     result = execute(req.authorization_id)
     if not result["ok"] and result["reason"] == "unknown_authorization":
         raise HTTPException(404, result)
@@ -136,10 +168,11 @@ def execute_route(req: ExecuteRequest):
 
 
 @app.post("/reconcile")
-def reconcile_route(req: ExecuteRequest):
+def reconcile_route(req: ExecuteRequest, request: Request):
+    _sandbox(request)
     return reconcile(req.authorization_id)
 
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "rail": "simulated" if SIMULATED else "stripe_test"}

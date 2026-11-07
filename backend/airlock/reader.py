@@ -65,9 +65,38 @@ def _render(message_id: str) -> tuple[str, dict]:
     return INVISIBLE.sub("", "\n".join(parts)), raw
 
 
-def read(message_id: str) -> InvoiceClaims:
-    """Extract claims and persist them with origin labels. Idempotent per message."""
+def recording_key(content: str) -> str:
+    """Recorded reads are keyed by exactly what the model was shown (sha256 of the rendered email)."""
+    import hashlib
+    return hashlib.sha256(content.encode()).hexdigest()[:20]
+
+
+def _replay(content: str) -> InvoiceClaims:
+    """DEMO_MODE: return the real Claude output recorded for this exact email (scripts/record-reads.sh). No model
+    call, no spend. An email that was never recorded can't be read, so it fails safe (held, nothing paid)."""
+    path = config.RECORDINGS / f"{recording_key(content)}.json"
+    if not path.exists():
+        raise RuntimeError("no recorded read for this email (demo mode makes no model calls)")
+    return InvoiceClaims.model_validate(json.loads(path.read_text())["claims"])
+
+
+def _record(content: str, claims: InvoiceClaims, scenario: str | None) -> None:
+    from datetime import datetime, timezone
+    config.RECORDINGS.mkdir(parents=True, exist_ok=True)
+    (config.RECORDINGS / f"{recording_key(content)}.json").write_text(json.dumps({
+        "scenario": scenario, "model": MODEL, "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+        "claims": claims.model_dump()}, indent=2) + "\n")
+
+
+def read(message_id: str, record_as: str | None = None) -> InvoiceClaims:
+    """Extract claims and persist them with origin labels. Idempotent per message.
+    record_as: also save the model's output as a demo recording (scripts/record-reads.sh)."""
     content, _ = _render(message_id)
+    if config.DEMO_MODE and record_as is None:
+        claims = _replay(content)
+        _persist(message_id, claims)
+        return claims
     response = _anthropic().messages.parse(
         model=MODEL,
         max_tokens=4000,
@@ -79,6 +108,8 @@ def read(message_id: str) -> InvoiceClaims:
     if response.stop_reason == "refusal":
         raise RuntimeError(f"reader refused: {response.stop_details}")
     claims: InvoiceClaims = response.parsed_output
+    if record_as is not None:
+        _record(content, claims, record_as)
     _persist(message_id, claims)
     return claims
 

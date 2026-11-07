@@ -1,4 +1,6 @@
 """Postgres access (Supabase session pooler). All tables live in the `airlock` schema."""
+import contextvars
+import re
 from contextlib import contextmanager
 
 from psycopg.rows import dict_row
@@ -9,6 +11,9 @@ import atexit
 from . import config
 
 _pool: ConnectionPool | None = None
+# Demo sandboxes: each visitor's requests run against their own schema (set per request by airlock.demo).
+SANDBOX: contextvars.ContextVar[str | None] = contextvars.ContextVar("airlock_sandbox", default=None)
+SANDBOX_RE = re.compile(r"^airlock_demo_[a-f0-9]{12}$")
 
 
 def pool() -> ConnectionPool:
@@ -17,7 +22,7 @@ def pool() -> ConnectionPool:
         _pool = ConnectionPool(
             config.need("DATABASE_URL"),
             min_size=1,
-            max_size=8,  # API + executor + scripts must fit Supabase's 15-client session pooler
+            max_size=int(config.get("AIRLOCK_DB_POOL") or 8),  # API + executor + scripts must fit Supabase's 15-client session pooler
             # Supabase's pooler drops idle connections: recycle ours before it does, so a long-running process
             # (the executor) never gets a dead connection mid-payment. (No per-checkout ping: it doubled latency.)
             max_idle=60,
@@ -30,20 +35,33 @@ def pool() -> ConnectionPool:
 
 
 @contextmanager
+def _conn():
+    """A pooled connection. Inside a demo sandbox, the search_path is set with SET LOCAL, so it lasts only for this
+    checkout's transaction and the connection goes back to the pool unchanged."""
+    with pool().connection() as conn:
+        sb = SANDBOX.get()
+        if sb:
+            if not SANDBOX_RE.match(sb):
+                raise ValueError("bad sandbox name")
+            conn.execute(f"set local search_path to {sb},public")
+        yield conn
+
+
+@contextmanager
 def tx():
     """One transaction. Commits on success, rolls back on exception."""
-    with pool().connection() as conn:
+    with _conn() as conn:
         with conn.transaction():
             yield conn
 
 
 def one(sql: str, *params):
-    with pool().connection() as conn:
+    with _conn() as conn:
         return conn.execute(sql, params).fetchone()
 
 
 def all_rows(sql: str, *params):
-    with pool().connection() as conn:
+    with _conn() as conn:
         return conn.execute(sql, params).fetchall()
 
 

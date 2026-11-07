@@ -10,7 +10,7 @@ import logging
 
 import anthropic
 
-from . import config, pipeline
+from . import config
 
 log = logging.getLogger("airlock.treasurer")
 MODEL = "claude-opus-5-5"
@@ -68,8 +68,37 @@ def compact(verdict: dict) -> dict:
             **({"authorization_id": verdict["authorization_id"]} if verdict.get("authorization_id") else {})}
 
 
+def scripted(verdict: dict, handlers: dict) -> dict:
+    """DEMO_MODE stand-in for the Claude Treasurer: follows next_action with the same tools and the same ids-only
+    inputs. (In the full setup a model makes these calls; either way the executor only accepts an authorization_id.)"""
+    v = compact(verdict)
+    na, facts, actions = v["next_action"], v["facts"], []
+
+    def call(tool, **kw):
+        out = handlers[tool](**kw)
+        actions.append({"tool": tool, "input": kw, "result": out})
+        return out
+    if na == "execute_payment" and v.get("authorization_id"):
+        out = call("execute_payment", authorization_id=v["authorization_id"])
+        summary = "Paid the authorized amount to the account on file." if out.get("ok") else \
+            f"The executor refused the payment ({out.get('reason')}); nothing was paid."
+    elif na == "request_vendor_verification" and facts.get("change_request_id"):
+        call("request_vendor_verification", change_request_id=facts["change_request_id"])
+        summary = "Asked the vendor to confirm the bank change on their phone on file; the invoice stays on hold."
+    elif na.startswith("reply_in_thread:") and na.split(":", 1)[1] in ("already_paid", "ask_vendor_to_explain_or_reissue",
+                                                                         "ask_vendor_to_resend"):
+        call("reply_to_vendor", template=na.split(":", 1)[1])
+        summary = "Replied to the vendor with the standard template; nothing was paid."
+    else:
+        call("escalate_to_admin", reason=f"{v['decision']}: {v['reason']}")
+        summary = "Nothing I'm allowed to do here; escalated to the admin."
+    return {"summary": summary, "actions": actions, "scripted": True}
+
+
 def run(case_id: str, verdict: dict, handlers: dict) -> dict:
     """One agent turn-loop over a verdict. `handlers` maps tool name -> callable(**input) -> dict."""
+    if config.DEMO_MODE:
+        return scripted(verdict, handlers)
     messages = [{"role": "user", "content": f"Case {case_id}. Airlock verdict:\n{json.dumps(compact(verdict))}"}]
     actions = []
     for _ in range(6):
