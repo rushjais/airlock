@@ -19,9 +19,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 log = logging.getLogger("airlock.api")
 app = FastAPI(title="Airlock")
 
-from .agent_api import router as agent_router  # noqa: E402
+if not config.DEMO_MODE:  # the hosted demo exposes only the sandboxed demo API (see demo_routes.py)
+    from .agent_api import router as agent_router  # noqa: E402
 
-app.include_router(agent_router)
+    app.include_router(agent_router)
 
 
 @app.post("/webhooks/primitive")
@@ -70,9 +71,6 @@ async def primitive_webhook(request: Request, background: BackgroundTasks):
 def _forged_agent_mail(message_id: str, from_addr: str, rcpt: str, body: str) -> None:
     """An unsigned email addressed to an agent. It is a claim like any other email: it cannot authorize anything.
     Shown as its own case so the screen makes the point."""
-    from . import public
-    if public.gate(message_id):
-        return
     import re
     import uuid
     claims_to_be = from_addr.split("@")[0] if from_addr.endswith("@" + config.INBOX_DOMAIN) else None
@@ -96,9 +94,6 @@ def _forged_agent_mail(message_id: str, from_addr: str, rcpt: str, body: str) ->
               values (%s,'unsigned_agent_mail',%s,'deny','unsigned_agent_mail',%s,%s,'none') returning id""",
            message_id, case_id, ["FORGED_AGENT_SENDER"] if claims_to_be else ["UNSIGNED_AGENT_MAIL"],
            json.dumps({"claims_to_be": who, "accounts_requested": [a.strip() for a in accounts]}))
-    from . import public
-    public.record(message_id, {"decision": "deny", "reason": "unsigned_agent_mail",
-                               "flags": ["FORGED_AGENT_SENDER"] if claims_to_be else ["UNSIGNED_AGENT_MAIL"]}, case_id)
     log.warning("forged/unsigned agent mail to %s from %s -> case %s", rcpt, from_addr, case_id)
 
 
@@ -410,11 +405,14 @@ def approval_reconfirm(cr_id: str, body: AuthBody):
 
 @app.on_event("startup")
 def _start_workers():
+    if config.DEMO_MODE:  # sandboxes only: no inbox, no texts, nothing touches the default schema
+        from . import demo
+        demo.start_workers()
+        return
     approvals.start_release_worker()
     _resume_vendor_listeners()
-    from . import ask, inkbox_sync, public
+    from . import ask, inkbox_sync
     ask.start()
-    public.ensure()
     import threading
     threading.Thread(target=inkbox_sync.sync, daemon=True, name="inkbox-sync").start()
 
@@ -470,18 +468,6 @@ def demo_intake(state: str, request: Request):
     return {"ok": True, "intake_paused": state == "pause"}
 
 
-@app.post("/api/demo/attempts/clear")
-def demo_attempts_clear(request: Request):
-    """Local-only: wipe the public attempts board (e.g. after testing)."""
-    if request.client.host not in ("127.0.0.1", "::1") or request.headers.get("x-forwarded-for"):
-        raise HTTPException(403, "only available locally")
-    from . import public
-    public.ensure()
-    with db.tx() as conn:
-        conn.execute(f"truncate {public.SCHEMA}.attempts")
-    return {"ok": True}
-
-
 @app.post("/api/demo/monthend")
 def demo_monthend(request: Request):
     """Local-only: run month-end close (about 9 distinct cases through the real pipeline, then one admin digest)."""
@@ -502,23 +488,6 @@ def mail_feed():
 def monthend_status():
     from . import monthend
     return monthend.summary()
-
-
-@app.get("/public/attempts")
-def public_attempts():
-    """Public, read-only: the 'try to steal from Airlock' board. Handles only, never addresses or email text."""
-    from . import public
-    if not public.enabled():
-        raise HTTPException(404)
-    return public.board()
-
-
-@app.get("/attempts", response_class=HTMLResponse)
-def attempts_page():
-    from . import public
-    if not public.enabled():
-        raise HTTPException(404)
-    return (pathlib.Path(__file__).parent / "attempts.html").read_text()
 
 
 @app.get("/api/vendor/corvid/books")
@@ -565,4 +534,13 @@ def results():
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    """Liveness plus a database round trip (Railway's health check)."""
+    with db.pool().connection() as conn:
+        conn.execute("select 1")
+    return {"ok": True, "demo_mode": config.DEMO_MODE}
+
+
+if config.DEMO_MODE:
+    from .demo_routes import mount as _mount_demo  # noqa: E402
+
+    _mount_demo(app)
