@@ -332,7 +332,12 @@ function OutOfBand({ v, onChange }: { v: View; onChange: (v: View) => void }) {
   }
 
   let body: React.ReactNode = null;
-  if (o && o.status === "pending_verification") {
+  const asked = v.phone.some((p) => p.template === "vendor_verification");
+  if (o && o.status === "pending_verification" && !asked) {
+    body = <p>Airlock is already checking with this vendor about an earlier bank-change request, and asks about one
+      at a time so a bare NO can't be misread. This one stays held until that's resolved. (Reset the demo to start
+      clean.)</p>;
+  } else if (o && o.status === "pending_verification") {
     const sent = v.phone.find((p) => p.template === "vendor_verification");
     const suggested = sent?.body.match(/YES (\d{6})/)?.[1];
     body = (
