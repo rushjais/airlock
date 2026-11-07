@@ -6,7 +6,6 @@ import {
 
 const POLL_MS = 1500;
 const INBOX_DOMAIN = "wise-egret.primitive.email";
-const AGENTS = ["intake", "auditor", "treasurer", "verifier"];
 
 function usePoll<T>(fn: () => Promise<T>, deps: unknown[] = []): T | null {
   const [data, setData] = useState<T | null>(null);
