@@ -1,0 +1,40 @@
+{
+  "scenario": "05_price_anomaly",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:38+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Corvid Software",
+      "source": "attachment"
+    },
+    "invoice_number": {
+      "value": "INV-C-0931",
+      "source": "email"
+    },
+    "po_number": {
+      "value": "PO-310",
+      "source": "email"
+    },
+    "amount_cents": {
+      "value": "44900",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [
+      {
+        "value": "Inventory platform subscription, October 2026: $449.00",
+        "source": "attachment"
+      }
+    ],
+    "payment_terms": {
+      "value": "Net 30",
+      "source": "email"
+    },
+    "bank_details": [],
+    "instructions_to_reader": [],
+    "data_requests": [],
+    "summary": "Corvid Software bills Kiln Supply Co. $449.00 for invoice INV-C-0931 (October subscription) under PO-310, net 30 terms."
+  }
+}

@@ -2,6 +2,7 @@
   "_note": "Fictional demo company. All names, domains, phones and accounts are invented. Replace phone numbers and Stripe test account IDs with real test values before the demo.",
   "company": {
     "name": "Kiln Supply Co.",
+    "domain": "kilnsupply.com",
     "ap_agent_inbox": "ap-agent@REPLACE_WITH_PRIMITIVE_DOMAIN",
     "auto_pay_limit_cents": 200000,
     "admins": [

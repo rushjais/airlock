@@ -1,0 +1,44 @@
+{
+  "scenario": "10_new_vendor_one_time",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:49+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Bayview Plumbing",
+      "source": "email"
+    },
+    "invoice_number": {
+      "value": "2210",
+      "source": "email"
+    },
+    "po_number": null,
+    "amount_cents": {
+      "value": "85000",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [
+      {
+        "value": "Emergency repair, burst pipe at warehouse, Oct 14",
+        "source": "email"
+      }
+    ],
+    "payment_terms": null,
+    "bank_details": [
+      {
+        "value": "account ending 3302",
+        "source": "email"
+      }
+    ],
+    "instructions_to_reader": [
+      {
+        "value": "Please pay to account ending 3302.",
+        "source": "email"
+      }
+    ],
+    "data_requests": [],
+    "summary": "Bayview Plumbing claims Invoice 2210 for $850.00 is attached for an emergency burst-pipe repair on Oct 14 and asks payment go to the account ending 3302."
+  }
+}

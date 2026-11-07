@@ -9,6 +9,7 @@ set search_path to {schema};
 create table company (
   id text primary key default 'kiln',
   name text not null,
+  domain text,                               -- our own email domain (senders imitating it are impersonation)
   auto_pay_limit_cents int not null,
   undo_window_seconds int not null default 60,
   -- after the vendor's phone on file says "we did NOT change banks": pay the registry account, or hold for a human

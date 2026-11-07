@@ -31,6 +31,12 @@ INVISIBLE = re.compile("[\u200b-\u200f\u2060-\u2064\ufeff\U000e0000-\U000e007f]"
 AGENT_DIRECTED = re.compile(
     r"(automated|accounts payable agent|\bAI\b|assistant|language model|ignore (all |previous )?|"
     r"this instruction|overrides? (records|instructions)|route this payment|system notice)", re.I)
+# Text in the email itself that addresses an automated reader ("ignore previous instructions", "note to the AI").
+INSTRUCTIONS_TO_AGENT = re.compile(
+    r"(ignore (all |any )?(of )?(the |your )?(previous|prior|above|earlier) (instructions|rules|guidance)|"
+    r"(note|message|instructions?) (to|for) (the |any )?(ai|automated|accounts[- ]payable) ?(assistant|agent|system|model)?|"
+    r"system (note|notice|prompt|override)|disregard (your|the|all) (rules|instructions|policy)|"
+    r"you are (now )?(an? )?(ai|automated) (assistant|agent))", re.I)
 DATA_ASK = re.compile(
     r"(copy of (your|the) .{0,40}(contract|agreement)|payment confirmations|reply with (them|it) attached|"
     r"send (us )?(a copy|the contract|your contract)|forward .{0,40}contract)", re.I)
@@ -59,6 +65,7 @@ class Evidence:
     sender_authenticated: bool | None = None  # Primitive's SPF/DKIM/DMARC verdict: a hint, never identity
     first_time_sender: bool = False    # this exact address never wrote before and isn't the registered contact
     auto_pay_limit_cents: int | None = None
+    company: dict | None = None        # our own company (name, domain): senders imitating it are impersonation
     raw_text: str = ""                 # body + attachments before invisible characters were stripped
     flags: list[str] = field(default_factory=list)
 
@@ -87,6 +94,14 @@ def lookalike(domain: str, vendors: list[dict]) -> dict | None:
                 or (len(brand) >= 4 and brand in label)):
             return v
     return None
+
+
+def company_lookalike(domain: str, company: dict | None) -> str | None:
+    """Our own domain, imitated (kiln-supply.com for kilnsupply.com): the classic CEO-impersonation setup."""
+    if not company or not company.get("domain") or domain == company["domain"]:
+        return None
+    hit = lookalike(domain, [{"registered_domain": company["domain"], "name": company["name"]}])
+    return company["domain"] if hit else None
 
 
 def account_last4s(text: str) -> set[str]:
@@ -154,7 +169,10 @@ def compute(e: Evidence) -> list[str]:
     email_text = f"{e.subject}\n{e.body}"
     target = e.vendor or e.lookalike_of
 
-    if e.vendor is None and e.lookalike_of is None:
+    imitated = company_lookalike(e.from_domain, e.company)
+    if imitated:
+        f.append(f"COMPANY_LOOKALIKE_DOMAIN:{e.from_domain}~{imitated}")
+    if e.vendor is None and e.lookalike_of is None and not imitated:
         f.append("NEW_VENDOR")
     if e.lookalike_of is not None:
         f.append(f"LOOKALIKE_DOMAIN:{e.from_domain}~{e.lookalike_of['registered_domain']}")
@@ -181,6 +199,8 @@ def compute(e: Evidence) -> list[str]:
     # "Remit to the account on file" on a genuine invoice).
     if AGENT_DIRECTED.search(e.attachment_text):
         f.append("EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT")
+    if INSTRUCTIONS_TO_AGENT.search(email_text):
+        f.append("INSTRUCTIONS_TO_AGENT_IN_EMAIL")
     if DATA_ASK.search(email_text):
         f.append("DATA_REQUEST")
 
@@ -274,6 +294,8 @@ EXPLAIN = {
     "CHANNEL_AVOIDANCE": "asked us not to call / email only",
     "SECRECY_LANGUAGE": "asked to keep it quiet",
     "EXEC_APPROVAL_CLAIM": "claims an executive approved it",
+    "INSTRUCTIONS_TO_AGENT_IN_EMAIL": "the email contains instructions aimed at an AI agent",
+    "COMPANY_LOOKALIKE_DOMAIN": "the sender's domain imitates our own company's domain",
     "PAYMENT_LINK": "a link to 'update payment details'",
     "VENDOR_NAME_MISMATCH": "the company name is slightly off",
     "DISPLAY_NAME_MISMATCH": "a vendor's name on a non-vendor address",

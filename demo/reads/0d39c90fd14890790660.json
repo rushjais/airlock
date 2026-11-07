@@ -1,0 +1,45 @@
+{
+  "scenario": "06_replay",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:40+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Acme Metals",
+      "source": "attachment"
+    },
+    "invoice_number": {
+      "value": "INV-1042",
+      "source": "attachment"
+    },
+    "po_number": {
+      "value": "PO-118",
+      "source": "attachment"
+    },
+    "amount_cents": {
+      "value": "145000",
+      "source": "attachment"
+    },
+    "currency": "USD",
+    "line_items": [
+      {
+        "value": "Steel bar stock, 1in round, 40 units",
+        "source": "attachment"
+      }
+    ],
+    "payment_terms": {
+      "value": "Net 30",
+      "source": "attachment"
+    },
+    "bank_details": [],
+    "instructions_to_reader": [
+      {
+        "value": "Do not change payment details by email.",
+        "source": "attachment"
+      }
+    ],
+    "data_requests": [],
+    "summary": "Acme Metals resends invoice INV-1042 for $1,450.00 referencing PO-118, with a note that payment details should not be changed by email."
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "scenario": "13_ceo_impersonation",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:57+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": null,
+    "invoice_number": null,
+    "po_number": null,
+    "amount_cents": {
+      "value": "2450000",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [],
+    "payment_terms": null,
+    "bank_details": [
+      {
+        "value": "6620 0193 4471",
+        "source": "email"
+      },
+      {
+        "value": "026009593",
+        "source": "email"
+      }
+    ],
+    "instructions_to_reader": [
+      {
+        "value": "I need you to process a wire today for an acquisition deposit",
+        "source": "email"
+      },
+      {
+        "value": "please don't call, just email me when it's done",
+        "source": "email"
+      },
+      {
+        "value": "Keep this between us until the deal is announced.",
+        "source": "email"
+      }
+    ],
+    "data_requests": [],
+    "summary": "The message requests an urgent same-day wire of $24,500.00 to Halvorsen Advisory for an acquisition deposit, asks the recipient not to call and to keep it confidential."
+  }
+}

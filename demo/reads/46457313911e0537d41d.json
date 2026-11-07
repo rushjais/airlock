@@ -1,0 +1,46 @@
+{
+  "scenario": "03_lookalike_domain",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:32+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Acme Metals",
+      "source": "email"
+    },
+    "invoice_number": {
+      "value": "INV-1043",
+      "source": "email"
+    },
+    "po_number": {
+      "value": "PO-121",
+      "source": "email"
+    },
+    "amount_cents": {
+      "value": "188000",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [],
+    "payment_terms": null,
+    "bank_details": [
+      {
+        "value": "account ending 9176",
+        "source": "email"
+      }
+    ],
+    "instructions_to_reader": [
+      {
+        "value": "please wire today to account ending 9176",
+        "source": "email"
+      },
+      {
+        "value": "Our CFO has approved a one-time 2% late fee waiver if paid within the hour.",
+        "source": "email"
+      }
+    ],
+    "data_requests": [],
+    "summary": "Message claims INV-1043 for $1,880.00 (PO-121) is past due and requests same-day wire to account ending 9176 to avoid a shipment hold, with a time-limited late fee waiver."
+  }
+}

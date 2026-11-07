@@ -1,0 +1,35 @@
+{
+  "scenario": "07_goods_not_received",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:42+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Acme Metals",
+      "source": "email"
+    },
+    "invoice_number": {
+      "value": "INV-1044",
+      "source": "email"
+    },
+    "po_number": {
+      "value": "PO-122",
+      "source": "email"
+    },
+    "amount_cents": {
+      "value": "150000",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [],
+    "payment_terms": {
+      "value": "Payment due on receipt",
+      "source": "email"
+    },
+    "bank_details": [],
+    "instructions_to_reader": [],
+    "data_requests": [],
+    "summary": "Acme Metals Billing claims invoice INV-1044 for $1,500.00 against PO-122, payable on receipt."
+  }
+}

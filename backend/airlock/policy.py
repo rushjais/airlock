@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from . import db, flags as F
 from .reader import claims_for
 
-ESCALATE_TO_HOLD = {"EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT", "REPLY_TO_MISMATCH", "BANK_CHANGE_LANGUAGE",
+ESCALATE_TO_HOLD = {"EMBEDDED_INSTRUCTIONS_IN_ATTACHMENT", "INSTRUCTIONS_TO_AGENT_IN_EMAIL", "REPLY_TO_MISMATCH", "BANK_CHANGE_LANGUAGE",
                     "URGENCY_LANGUAGE", "NEW_LINE_ITEM", "DATA_REQUEST", "AMOUNT_DEVIATION",
                     "CONTRACT_PRICE_MISMATCH", "CHANNEL_AVOIDANCE", "SECRECY_LANGUAGE", "PAYMENT_LINK",
                     "VENDOR_NAME_MISMATCH", "EXEC_APPROVAL_CLAIM", "INVISIBLE_UNICODE", "SENDER_AUTH_FAILED"}
@@ -73,7 +73,7 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
     hdr = db.one("select from_header from message_raw where message_id=%s", message_id) or {}
     first_time = bool(vendor) and msg["from_address"] != (vendor["registered_email"] or "").lower() and not db.one(
         "select 1 from messages where from_address=%s and received_at < %s limit 1", msg["from_address"], msg["received_at"])
-    company = db.one("select auto_pay_limit_cents from company") or {}
+    company = db.one("select name, domain, auto_pay_limit_cents from company") or {}
     ev = F.Evidence(
         from_domain=msg["from_domain"],
         reply_to=msg["reply_to"],
@@ -96,6 +96,7 @@ def _evidence(message_id: str) -> tuple[dict, F.Evidence]:
         sender_authenticated=msg["sender_authenticated"],
         first_time_sender=first_time,
         auto_pay_limit_cents=company.get("auto_pay_limit_cents"),
+        company=company or None,
         raw_text=(msg["subject"] or "") + "\n" + raw_body + "\n" + raw_att,
     )
     return msg, ev
@@ -134,6 +135,10 @@ def propose_payment(message_id: str) -> dict:
                    "sender_authenticated_hint": msg["sender_authenticated"]}
 
     # 1. Route by registered domain (a hint, not identity: invariant 11).
+    if ev.vendor is None and F.company_lookalike(ev.from_domain, ev.company):
+        # Someone outside dressed up as us (fake CEO/CFO). Nothing an outsider sends can be paid; deny outright.
+        facts["imitates"] = "company"
+        return _result(message_id, "deny", "sender_imitates_company", flags, facts, "notify_admin")
     if ev.vendor is None:
         if ev.lookalike_of is not None:
             reason = "outbound_recipient_not_registered" if "DATA_REQUEST" in flags else "sender_not_registered"

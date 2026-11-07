@@ -1,0 +1,34 @@
+{
+  "scenario": "08_one_off_no_po",
+  "model": "claude-haiku-5-5",
+  "recorded_at": "2026-11-07T08:11:44+00:00",
+  "note": "Real output of airlock.reader for this exact input, replayed in DEMO_MODE.",
+  "claims": {
+    "is_invoice": true,
+    "vendor_name": {
+      "value": "Acme Metals",
+      "source": "email"
+    },
+    "invoice_number": {
+      "value": "INV-1045",
+      "source": "email"
+    },
+    "po_number": null,
+    "amount_cents": {
+      "value": "17500",
+      "source": "email"
+    },
+    "currency": "USD",
+    "line_items": [
+      {
+        "value": "Emergency Saturday delivery requested on Oct 11",
+        "source": "email"
+      }
+    ],
+    "payment_terms": null,
+    "bank_details": [],
+    "instructions_to_reader": [],
+    "data_requests": [],
+    "summary": "Acme Metals billing claims invoice INV-1045 for $175.00 for an emergency Saturday delivery requested on Oct 11, with no PO issued."
+  }
+}
