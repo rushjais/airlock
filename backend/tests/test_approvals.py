@@ -1,5 +1,4 @@
 """Bank-change approval: verified-first, bound to registry version, friction, undo window, re-confirmation."""
-from datetime import timedelta
 
 from airlock import approvals, db, executor, policy
 from airlock.replay import replay

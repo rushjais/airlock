@@ -4,11 +4,9 @@
 """
 import json
 import logging
-import pathlib
 from typing import Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from email.utils import parseaddr

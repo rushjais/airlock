@@ -130,7 +130,6 @@ def send_code(change_request_id: str) -> dict:
         return {"ok": False, "reason": "verification_already_sent", "channel": ev.get("channel"),
                 "phone_on_file_last4": (ev.get("phone_on_file") or "")[-4:]}
     code = f"{secrets.randbelow(10**6):06d}"
-    possessive = vendor["name"] + ("'" if vendor["name"].endswith("s") else "'s")
     new = cr["new_destination"].replace("account(s) ending", "an account ending")
     ctx = request_context(cr)
     text = (f"VENDOR CHECK for {vendor['name']}\nThis is Kiln Supply Co. accounts payable. At {ctx['when']} we got an "
