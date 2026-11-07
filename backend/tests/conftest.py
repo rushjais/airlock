@@ -63,3 +63,10 @@ class FakeStripe:
                 raise exc
             tid = self.by_key.setdefault(kw["idempotency_key"], f"tr_fake_{len(self.by_key) + 1}")
         return types.SimpleNamespace(id=tid)
+
+
+def recorded_read(message_id: str) -> None:
+    """The reader's real output for this exact email, replayed from demo/reads (no model call)."""
+    from airlock import reader
+    content, _ = reader._render(message_id)
+    reader._persist(message_id, reader._replay(content))
