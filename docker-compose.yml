@@ -1,0 +1,20 @@
+# Run the hosted demo locally, exactly as it runs in production: `docker compose up --build`, then open
+# http://localhost:8000. No secrets needed.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: airlock
+      POSTGRES_DB: airlock
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      DATABASE_URL: postgresql://postgres:airlock@db:5432/airlock
+    depends_on:
+      db:
+        condition: service_healthy
